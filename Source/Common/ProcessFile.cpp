@@ -11,6 +11,9 @@
 #ifdef ENABLE_AVFCTL
 #include "Common/AvfCtlWrapper.h"
 #endif
+#ifdef ENABLE_SIMULATOR
+#include "Common/SimulatorWrapper.h"
+#endif
 #include "ZenLib/Ztring.h"
 #include "Output.h"
 using namespace ZenLib;
@@ -67,7 +70,7 @@ file::file()
 {
     Merge_FilePos = Merge_FilePos_Total++;
     FrameNumber = 0;
-    #ifdef ENABLE_AVFCTL
+    #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
     Controller=nullptr;
     RewindMode=Rewind_Mode_None;
     #endif
@@ -83,10 +86,13 @@ void file::Parse(const String& FileName)
 
     if (Verbosity == 10)
         cerr << "Debug: opening (in) \"" << Ztring(FileName).To_Local() << "\"..." << endl;
-    #ifdef ENABLE_AVFCTL
-    Ztring ZFileName(FileName);
-    if (ZFileName.size()>9 && ZFileName.find(__T("device://"))==0)
+    if (false)
     {
+    }
+    #ifdef ENABLE_AVFCTL
+    else if (FileName.rfind(__T("device://"), 0)==0)
+    {
+        Ztring ZFileName(FileName);
         size_t Device=(size_t)ZFileName.SubString(__T("device://"), __T("")).To_int64u();
         if (Device<AVFCtlWrapper::GetDeviceCount())
         {
@@ -101,8 +107,18 @@ void file::Parse(const String& FileName)
             MI.Open_Buffer_Finalize();
         }
     }
-    else
     #endif
+    #ifdef ENABLE_SIMULATOR
+    else if (FileName.rfind(__T("simulator://"), 0)==0)
+    {
+        FileWrapper Wrapper(this);
+        MI.Open_Buffer_Init();
+        Controller = new SimulatorWrapper();
+        Controller->CreateCaptureSession(FileName.substr(12), &Wrapper);
+        MI.Open_Buffer_Finalize();
+    }
+    #endif
+    else
     {
         MI.Open(FileName);
     }
@@ -126,7 +142,7 @@ void file::Parse_Buffer(const uint8_t* Buffer, size_t Buffer_Size)
 //---------------------------------------------------------------------------
 file::~file()
 {
-    #ifdef ENABLE_AVFCTL
+    #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
     if (Controller)
         delete Controller;
     #endif
@@ -157,7 +173,15 @@ bool file::TransportControlsSupported()
 #endif
 
 //---------------------------------------------------------------------------
-#ifdef ENABLE_AVFCTL
+#ifdef ENABLE_SIMULATOR
+bool file::TransportControlsSupported()
+{
+    return Merge_InputFileNames[0].find("simulator://") == 0;
+}
+#endif
+
+//---------------------------------------------------------------------------
+#if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
 void file::RewindToTimeCode(TimeCode TC)
 {
     RewindMode=Rewind_Mode_TimeCode;
@@ -167,7 +191,7 @@ void file::RewindToTimeCode(TimeCode TC)
 #endif
 
 //---------------------------------------------------------------------------
-#ifdef ENABLE_AVFCTL
+#if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
 void file::RewindToAbst(int Abst)
 {
     RewindMode=Rewind_Mode_Abst;
@@ -179,7 +203,7 @@ void file::RewindToAbst(int Abst)
 //---------------------------------------------------------------------------
 void file::AddChange(const MediaInfo_Event_DvDif_Change_0* FrameData)
 {
-    #ifdef ENABLE_AVFCTL
+    #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
     if (RewindMode!=Rewind_Mode_None)
         return;
     #endif
@@ -217,7 +241,7 @@ void file::AddChange(const MediaInfo_Event_DvDif_Change_0* FrameData)
 //---------------------------------------------------------------------------
 void file::AddFrame(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 {
-    #ifdef ENABLE_AVFCTL
+    #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
     abst_bf AbstBf_Temp(FrameData->AbstBf);
     if (RewindMode==Rewind_Mode_TimeCode)
     {
@@ -250,6 +274,19 @@ void file::AddFrame(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
             }
             else
                 return; //Continue in rewind mode
+        }
+        else
+            return; //Continue in rewind mode
+    }
+    else if (RewindTo_TC.HasValue())
+    {
+        timecode TC_Temp(FrameData->TimeCode);
+        if (TC_Temp.HasValue())
+        {
+            TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), 30 /*TEMP*/, TC_Temp.DropFrame());
+            if (TC.ToFrames()<RewindTo_TC.ToFrames())
+                return;
+            RewindTo_TC = TimeCode();
         }
         else
             return; //Continue in rewind mode
@@ -308,7 +345,14 @@ void file::AddFrame(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
     }
 
     if (!Merge_OutputFileName.empty())
+    {
         Merge.AddFrame(Merge_FilePos, FrameData);
+        if (Merge.TC.HasValue())
+        {
+            RewindToTimeCode(Merge.TC);
+            Merge.TC = TimeCode();
+        }
+    }
 
     // Information
     if (!Merge_FilePos && Verbosity > 0 && Verbosity <= 7)
@@ -344,7 +388,7 @@ void file::AddFrame(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 //---------------------------------------------------------------------------
 void file::AddFrame(const MediaInfo_Event_Global_Demux_4* FrameData)
 {
-    #ifdef ENABLE_AVFCTL
+    #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
     if (RewindMode!=Rewind_Mode_None)
         return;
     #endif
@@ -352,7 +396,7 @@ void file::AddFrame(const MediaInfo_Event_Global_Demux_4* FrameData)
     // DV frame
     if (!FrameData->StreamIDs_Size || FrameData->StreamIDs[FrameData->StreamIDs_Size-1]==-1)
     {
-        if (!Merge_OutputFileName.empty() && (Merge_InputFileNames.empty() || Merge_InputFileNames[0] == "-" || Merge_InputFileNames[0].find("device://") == 0)) // Only for stdin
+        if (!Merge_OutputFileName.empty() && (Merge_InputFileNames.empty() || Merge_InputFileNames[0] == "-" || Merge_InputFileNames[0].find("device://") == 0 || Merge_InputFileNames[0].find("simulator://") == 0)) // Only for stdin
             Merge.AddFrame(Merge_FilePos, FrameData);
         return;
     }

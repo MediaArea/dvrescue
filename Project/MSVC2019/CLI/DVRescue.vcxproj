@@ -102,7 +102,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;ENABLE_SIMULATOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>..\..\..\Source;..\..\..\Source\ThirdParty\TimeCode;..\..\..\Source\ThirdParty\ccdecoder;..\..\..\..\MediaInfoLib\Source;..\..\..\..\ZenLib\Source</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
@@ -162,6 +162,8 @@
     <ClCompile Include="..\..\..\Source\Common\Output_Webvtt.cpp" />
     <ClCompile Include="..\..\..\Source\Common\Output_Xml.cpp" />
     <ClCompile Include="..\..\..\Source\Common\ProcessFile.cpp" />
+    <ClCompile Include="..\..\..\Source\Common\ProcessFileWrapper.cpp" />
+    <ClCompile Include="..\..\..\Source\Common\SimulatorWrapper.cpp" />
     <ClCompile Include="..\..\..\Source\ThirdParty\ccdecoder\ccdecoder_internal.c" />
     <ClCompile Include="..\..\..\Source\ThirdParty\ccdecoder\ccdecoder_line21.c" />
     <ClCompile Include="..\..\..\Source\ThirdParty\ccdecoder\ccdecoder_line21field.c" />
@@ -181,6 +183,8 @@
     <ClInclude Include="..\..\..\Source\Common\Output_Webvtt.h" />
     <ClInclude Include="..\..\..\Source\Common\Output_Xml.h" />
     <ClInclude Include="..\..\..\Source\Common\ProcessFile.h" />
+    <ClInclude Include="..\..\..\Source\Common\ProcessFileWrapper.h" />
+    <ClInclude Include="..\..\..\Source\Common\SimulatorWrapper.h" />
     <ClInclude Include="..\..\..\Source\ThirdParty\ccdecoder\ccdecoder_common.h" />
     <ClInclude Include="..\..\..\Source\ThirdParty\ccdecoder\ccdecoder_internal.h" />
     <ClInclude Include="..\..\..\Source\ThirdParty\ccdecoder\ccdecoder_line21.h" />
