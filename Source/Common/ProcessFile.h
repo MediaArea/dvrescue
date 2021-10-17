@@ -27,6 +27,13 @@ using namespace std;
 #ifdef ENABLE_AVFCTL
 class AVFCtlWrapper;
 #endif
+#ifdef ENABLE_SIMULATOR
+class SimulatorWrapper;
+#endif
+#if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
+class FileWrapper;
+extern FileWrapper* Wrapper;
+#endif
 //---------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------
@@ -38,7 +45,7 @@ string MediaInfo_Version();
 // Enums
 //***************************************************************************
 
-#ifdef ENABLE_AVFCTL
+#if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
 enum rewind_mode {
     Rewind_Mode_None,
     Rewind_Mode_TimeCode,
@@ -103,14 +110,14 @@ public:
     void Parse(const String& FileName);
     void Parse_Buffer(const uint8_t* Buffer, size_t Buffer_Size);
 
-    #ifdef ENABLE_AVFCTL
+    #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
     bool TransportControlsSupported();
     void RewindToTimeCode(TimeCode TC);
     void RewindToAbst(int Abst);
     #endif
     void AddChange(const MediaInfo_Event_DvDif_Change_0* FrameData);
-    void AddFrame(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData);
-    void AddFrame(const MediaInfo_Event_Global_Demux_4* FrameData);
+    void AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData);
+    void AddFrameData(const MediaInfo_Event_Global_Demux_4* FrameData);
 
     // Merge
     void Merge_Finish() { Merge.Finish(); }
@@ -122,6 +129,11 @@ private:
 
     #ifdef ENABLE_AVFCTL
     AVFCtlWrapper* Controller;
+    #endif
+    #ifdef ENABLE_SIMULATOR
+    SimulatorWrapper* Controller;
+    #endif
+    #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
     rewind_mode RewindMode;
     TimeCode RewindTo_TC;
     int RewindTo_Abst;

@@ -133,7 +133,7 @@ namespace
             size_t          Size = 0;
         };
 
-        void push_back(uint8_t* Buffer, size_t Buffer_Size)
+        void push_back(const uint8_t* Buffer, size_t Buffer_Size)
         {
             Data.resize(Data.size() + 1);
             Data.back().Data = new uint8_t[Buffer_Size];
@@ -179,7 +179,7 @@ namespace
         bool                DoNotUseFile = false;
         bool                FirstTimeCodeFound = false;
         vector<per_segment> Segments;
-        dv_data*            DV_Data;
+        dv_data*            DV_Data = nullptr;
 
         ~per_file()
         {
@@ -234,8 +234,8 @@ namespace
     class dv_merge_private
     {
     public:
-        void AddFrame(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData);
-        void AddFrame(size_t InputPos, const MediaInfo_Event_Global_Demux_4* FrameData);
+        void AddFrameAnalysis(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData);
+        void AddFrameData(size_t InputPos, const uint8_t* Buffer, size_t Buffer_Size);
         void Finish();
 
     private:
@@ -288,15 +288,15 @@ namespace
 }
 
 //---------------------------------------------------------------------------
-void dv_merge::AddFrame(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
+void dv_merge::AddFrameanAnalysis(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 {
-    Merge_Private.AddFrame(InputPos, FrameData);
+    Merge_Private.AddFrameAnalysis(InputPos, FrameData);
 }
 
 //---------------------------------------------------------------------------
-void dv_merge::AddFrame(size_t InputPos, const MediaInfo_Event_Global_Demux_4* FrameData)
+void dv_merge::AddFrameData(size_t InputPos, const uint8_t* Buffer, size_t Buffer_Size)
 {
-    Merge_Private.AddFrame(InputPos, FrameData);
+    Merge_Private.AddFrameData(InputPos, Buffer, Buffer_Size);
 }
 
 //---------------------------------------------------------------------------
@@ -1062,7 +1062,7 @@ bool dv_merge_private::Process()
 }
 
 //---------------------------------------------------------------------------
-void dv_merge_private::AddFrame(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
+void dv_merge_private::AddFrameAnalysis(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 {
     // Coherency check
     lock_guard<mutex> Lock(Mutex);
@@ -1243,7 +1243,7 @@ bool dv_merge_private::Stats()
 }
 
 //---------------------------------------------------------------------------
-void dv_merge_private::AddFrame(size_t InputPos, const MediaInfo_Event_Global_Demux_4* FrameData)
+void dv_merge_private::AddFrameData(size_t InputPos, const uint8_t* Buffer, size_t Buffer_Size)
 {
     // Coherency check
     lock_guard<mutex> Lock(Mutex);
@@ -1256,5 +1256,5 @@ void dv_merge_private::AddFrame(size_t InputPos, const MediaInfo_Event_Global_De
     auto& Input = Inputs[InputPos];
     if (!Input.DV_Data)
         Input.DV_Data = new dv_data;
-    Input.DV_Data->push_back((uint8_t*)FrameData->Content, FrameData->Content_Size);
+    Input.DV_Data->push_back(Buffer, Buffer_Size);
 }
