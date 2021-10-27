@@ -133,7 +133,7 @@ namespace
             size_t          Size = 0;
         };
 
-        void push_back(uint8_t* Buffer, size_t Buffer_Size)
+        void push_back(const uint8_t* Buffer, size_t Buffer_Size)
         {
             Data.resize(Data.size() + 1);
             Data.back().Data = new uint8_t[Buffer_Size];
@@ -159,6 +159,14 @@ namespace
             return Data.empty();
         }
 
+        void clear()
+        {
+            while (!empty())
+            {
+                pop_front();
+            }
+        }
+
     private:
         vector<buffer>      Data;
     };
@@ -166,6 +174,7 @@ namespace
     struct per_file
     {
         FILE*               F = nullptr;
+        FILE*               F_Takes = nullptr;
         uint8_t             Buffer[144000 * 4];
         size_t              Count_Blocks[BlockStatus_Max] = {};
         size_t              Count_Blocks_NOK_Frames_NOK = 0;
@@ -179,7 +188,7 @@ namespace
         bool                DoNotUseFile = false;
         bool                FirstTimeCodeFound = false;
         vector<per_segment> Segments;
-        dv_data*            DV_Data;
+        dv_data*            DV_Data = nullptr;
 
         ~per_file()
         {
@@ -234,8 +243,14 @@ namespace
     class dv_merge_private
     {
     public:
-        void AddFrame(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData);
-        void AddFrame(size_t InputPos, const MediaInfo_Event_Global_Demux_4* FrameData);
+        ~dv_merge_private()
+        {
+            for (const auto Input : Inputs)
+                delete Input;
+        }
+
+        void AddFrameAnalysis(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData);
+        void AddFrameData(size_t InputPos, const uint8_t* Buffer, size_t Buffer_Size);
         void Finish();
 
     private:
@@ -249,7 +264,7 @@ namespace
         bool Stats();
 
         mutex Mutex;
-        vector<per_file> Inputs;
+        vector<per_file*> Inputs;
         per_file Output;
         size_t Segment_Pos = 0;
         size_t Frame_Pos = 0;
@@ -291,24 +306,29 @@ namespace
 
     public:
         TimeCode TC;
+        bool SwitchToFile0 = false;
     };
     dv_merge_private Merge_Private;
 }
 
 //---------------------------------------------------------------------------
-void dv_merge::AddFrame(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
+void dv_merge::AddFrameanAnalysis(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 {
-    Merge_Private.AddFrame(InputPos, FrameData);
+    Merge_Private.AddFrameAnalysis(InputPos, FrameData);
     TC = Merge_Private.TC;
     Merge_Private.TC = TimeCode();
+    SwitchToFile0 = Merge_Private.SwitchToFile0;
+    Merge_Private.SwitchToFile0 = false;
 }
 
 //---------------------------------------------------------------------------
-void dv_merge::AddFrame(size_t InputPos, const MediaInfo_Event_Global_Demux_4* FrameData)
+void dv_merge::AddFrameData(size_t InputPos, const uint8_t* Buffer, size_t Buffer_Size)
 {
-    Merge_Private.AddFrame(InputPos, FrameData);
+    Merge_Private.AddFrameData(InputPos, Buffer, Buffer_Size);
     TC = Merge_Private.TC;
     Merge_Private.TC = TimeCode();
+    SwitchToFile0 = Merge_Private.SwitchToFile0;
+    Merge_Private.SwitchToFile0 = false;
 }
 
 //---------------------------------------------------------------------------
@@ -357,21 +377,22 @@ bool dv_merge_private::Init()
 
     Merge_Help();
 
-    Inputs.resize(Input_Count);
+    Inputs.reserve(Input_Count);
     for (auto const& Inputs_FileName : Merge_InputFileNames)
     {
         if (Verbosity > 5)
             *Log << "File " << &Inputs_FileName - &Merge_InputFileNames.front() << ": " << Inputs_FileName << '\n';
-        auto& Input = Inputs[&Inputs_FileName - &Merge_InputFileNames.front()];
-        if (!Inputs_FileName.empty() && Inputs_FileName != "-" && Inputs_FileName.find("device://") != 0)
+        auto Input = new per_file;
+        if (!Inputs_FileName.empty() && Inputs_FileName != "-" && !FileCanSeekErrors(Inputs_FileName))
         {
             if (Verbosity == 10)
                 cerr << "Debug: opening (in) \"" << Inputs_FileName << "\"..." << endl;
-            Input.F = fopen(Inputs_FileName.c_str(), "rb");
+            Input->F = fopen(Inputs_FileName.c_str(), "rb");
             if (Verbosity == 10)
                 cerr << "Debug: opening (in) \"" << Inputs_FileName << "\"... Done." << endl;
         }
-        Input.Segments.resize(1);
+        Input->Segments.resize(1);
+        Inputs.push_back(Input);
     }
 
     if (Verbosity > 5)
@@ -386,12 +407,14 @@ bool dv_merge_private::Init()
         *Log << "|Comments" << endl;
     }
 
-    if (Inputs.size() < 2)
+    if (Inputs.size() < 2 && FileCanSeekErrors(Merge_InputFileNames.front()))
     {
-        Inputs.resize(2);
-        Inputs[1].DoNotUseFile = true;
+        Inputs.reserve(2);
         IsUsingInputSeek = true;
         Merge_Rewind_Pos = 0;
+        auto Input = new per_file;
+        Input->DoNotUseFile = true;
+        Inputs.push_back(Input);
     }
 
     return false;
@@ -401,29 +424,29 @@ bool dv_merge_private::Init()
 bool dv_merge_private::ManageRepeatedFrame(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 {
     auto& Input = Inputs[InputPos];
-    auto& Frames = Input.Segments[Segment_Pos].Frames;
+    auto& Frames = Input->Segments[Segment_Pos].Frames;
 
     // Ignore if frame repetition was found
-    if (Input.DoNotUseFile || (timecode(FrameData->TimeCode).Repeat() && !Frames.empty()))
+    if (Input->DoNotUseFile || (timecode(FrameData->TimeCode).Repeat() && !Frames.empty()))
     {
-        if (!Input.DoNotUseFile && !Frames.empty())
+        if (!Input->DoNotUseFile && !Frames.empty())
         {
             if (Frames.back().RepeatCount == 0xFF) // Check if there are too many repetition
-                Input.DoNotUseFile = true;
+                Input->DoNotUseFile = true;
             else
             {
                 Frames.back().RepeatCount++;
-                Input.Count_Frames_Repeated++;
+                Input->Count_Frames_Repeated++;
                 if (Frame_Pos >= Frames.size()) // Frame already parsed
                 {
-                    if (Input.F)
+                    if (Input->F)
                     {
-                        if (fseek(Input.F, (long)(Input.Segments[Segment_Pos].Frames.back().BlockStatus_Count * 80), SEEK_CUR))
+                        if (fseek(Input->F, (long)(Input->Segments[Segment_Pos].Frames.back().BlockStatus_Count * 80), SEEK_CUR))
                             *Log << "File seek issue." << endl;
                     }
-                    else if (Input.DV_Data && !Input.DV_Data->empty())
+                    else if (Input->DV_Data && !Input->DV_Data->empty())
                     {
-                        Input.DV_Data->pop_front();
+                        Input->DV_Data->pop_front();
                     }
                 }
             }
@@ -438,7 +461,7 @@ bool dv_merge_private::ManageRepeatedFrame(size_t InputPos, const MediaInfo_Even
 bool dv_merge_private::AppendFrameToList(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 {
     auto& Input = Inputs[InputPos];
-    auto& Frames = Input.Segments.back().Frames;
+    auto& Frames = Input->Segments.back().Frames;
     auto BlockStatus_Count = FrameData->BlockStatus_Count;
     per_frame CurrentFrame;
 
@@ -460,16 +483,16 @@ bool dv_merge_private::AppendFrameToList(size_t InputPos, const MediaInfo_Event_
         {
             if (CurrentFrame.TC.HasValue() && CurrentFrame.TC.ToFrames() < TC_Previous.ToFrames())
             {
-                Input.Segments.resize(Input.Segments.size() + 1);
-                Input.Segments.back().Frames.emplace_back(move(CurrentFrame));
+                Input->Segments.resize(Input->Segments.size() + 1);
+                Input->Segments.back().Frames.emplace_back(move(CurrentFrame));
                 return false;
             }
             TC_Previous++;
             while (TC_Previous != CurrentFrame.TC)
             {
                 Frames.emplace_back(Status_FrameMissing, TC_Previous, nullptr, BlockStatus_Count);
-                Input.Count_Blocks_Missing += BlockStatus_Count;
-                Input.Count_Frames_Missing++;
+                Input->Count_Blocks_Missing += BlockStatus_Count;
+                Input->Count_Frames_Missing++;
                 TC_Previous++;
             }
         }
@@ -489,7 +512,7 @@ bool dv_merge_private::AppendFrameToList(size_t InputPos, const MediaInfo_Event_
 bool dv_merge_private::ManagePartialFrame(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 {
     auto& Input = Inputs[InputPos];
-    auto& Frames = Input.Segments.back().Frames;
+    auto& Frames = Input->Segments.back().Frames;
     auto& CurrentFrame = Frames.back();
     auto BlockStatus_Count = FrameData->BlockStatus_Count;
 
@@ -507,15 +530,15 @@ bool dv_merge_private::ManagePartialFrame(size_t InputPos, const MediaInfo_Event
         CurrentFrame.Status.set(Status_BlockIssue);
         CurrentFrame.BlockStatus = new uint8_t[BlockStatus_Count];
         memcpy(CurrentFrame.BlockStatus, FrameData->BlockStatus, BlockStatus_Count);
-        Input.Count_Frames_NOK++;
+        Input->Count_Frames_NOK++;
     }
     else
     {
-        Input.Count_Frames_OK++;
+        Input->Count_Frames_OK++;
     }
     for (int i = 0; i < BlockStatus_Max; i++)
     {
-        Input.Count_Blocks[i] += Count_Blocks[i];
+        Input->Count_Blocks[i] += Count_Blocks[i];
     }
 
     return false;
@@ -536,7 +559,7 @@ bool dv_merge_private::TcSyncStart()
     for (size_t i = 0; i < Input_Count; i++)
     {
         auto& Input = Inputs[i];
-        auto& Frames = Input.Segments[Segment_Pos].Frames;
+        auto& Frames = Input->Segments[Segment_Pos].Frames;
 
         size_t Frames_Pos = 0;
         while (Frames_Pos < Frames.size() && !Frames[Frames_Pos].TC.HasValue())
@@ -553,13 +576,13 @@ bool dv_merge_private::TcSyncStart()
     for (size_t i = 0; i < Input_Count; i++)
     {
         auto& Input = Inputs[i];
-        auto& Frames = Input.Segments[Segment_Pos].Frames;
+        auto& Frames = Input->Segments[Segment_Pos].Frames;
 
         auto MissingFrames = Frames[StartPos[i]].TC.ToFrames() - StartPos[i] - TC_Min;
         if (!MissingFrames)
             continue;
-        Input.Count_Blocks_Missing += Frames[StartPos[i]].BlockStatus_Count * MissingFrames;
-        Input.Count_Frames_Missing += MissingFrames;
+        Input->Count_Blocks_Missing += Frames[StartPos[i]].BlockStatus_Count * MissingFrames;
+        Input->Count_Frames_Missing += MissingFrames;
         per_frame PreviousFrame;
         PreviousFrame.Status.set(Status_FrameMissing);
         PreviousFrame.BlockStatus_Count = Frames[StartPos[i]].BlockStatus_Count;
@@ -579,7 +602,7 @@ bool dv_merge_private::SyncEnd()
     for (size_t i = 0; i < Input_Count; i++)
     {
         auto& Input = Inputs[i];
-        auto& Frames = Input.Segments[Segment_Pos].Frames;
+        auto& Frames = Input->Segments[Segment_Pos].Frames;
         if (Frames_Status_Max < Frames.size())
         {
             Frames_Status_Max = Frames.size();
@@ -589,12 +612,12 @@ bool dv_merge_private::SyncEnd()
     for (size_t i = 0; i < Input_Count; i++)
     {
         auto& Input = Inputs[i];
-        auto& Frames = Input.Segments[Segment_Pos].Frames;
+        auto& Frames = Input->Segments[Segment_Pos].Frames;
         while (Frames.size() < Frames_Status_Max)
         {
             Frames.emplace_back(Status_FrameMissing, TimeCode(), nullptr, BlockStatus_Count);
-            Input.Count_Blocks_Missing += BlockStatus_Count;
-            Input.Count_Frames_Missing++;
+            Input->Count_Blocks_Missing += BlockStatus_Count;
+            Input->Count_Frames_Missing++;
         }
     }
 
@@ -612,19 +635,18 @@ bool dv_merge_private::Process()
         for (size_t i = 0; i < Input_Count; i++)
         {
             auto& Input = Inputs[i];
-            if (Input.DoNotUseFile)
+            if (Input->DoNotUseFile)
                 continue;
-            auto& Frames = Input.Segments[Segment_Pos].Frames;
+            auto& Frames = Input->Segments[Segment_Pos].Frames;
             if (Frames_Status_Max > Frames.size())
                 Frames_Status_Max = Frames.size();
         }
         if (Frame_Pos < Frames_Status_Max)
             break;
         auto Segment_Pos1 = Segment_Pos + 1;
-        for (size_t i = 0; i < Input_Count; i++)
+        for (const auto Input : Inputs)
         {
-            auto& Input = Inputs[i];
-            if (Segment_Pos1 >= Input.Segments.size())
+            if (Segment_Pos1 >= Input->Segments.size())
                 return true;
         }
         if (SyncEnd())
@@ -638,16 +660,16 @@ bool dv_merge_private::Process()
             return true;
     }
     size_t MaxSegmentSize = 0;
-    for (size_t i = 0; i < Input_Count; i++)
+    for (const auto Input : Inputs)
     {
-        if (MaxSegmentSize < Inputs[i].Segments.size())
-            MaxSegmentSize = Inputs[i].Segments.size();
+        if (MaxSegmentSize < Input->Segments.size())
+            MaxSegmentSize = Input->Segments.size();
     }
     if (Segment_Pos >= MaxSegmentSize || Frame_Pos >= Frames_Status_Max)
         return true;
-    for (size_t i = 0; i < Input_Count; i++)
+    for (const auto Input : Inputs)
     {
-        Inputs[i].Segments.resize(MaxSegmentSize);
+        Input->Segments.resize(MaxSegmentSize);
     }
 
     // Check abst coherency
@@ -657,7 +679,7 @@ bool dv_merge_private::Process()
         for (size_t i = 0; i < Input_Count; i++)
         {
             auto& Input = Inputs[i];
-            auto& Frames = Input.Segments[Segment_Pos].Frames;
+            auto& Frames = Input->Segments[Segment_Pos].Frames;
             auto& Frame = Frames[Frame_Pos];
             if (Frame.Abst != numeric_limits<int>::max())
                 abst_List.insert(Frame.Abst);
@@ -670,7 +692,8 @@ bool dv_merge_private::Process()
             {
                 for (size_t i = 0; i < Input_Count; i++)
                 {
-                    if (!Inputs[i].Segments[Segment_Pos].Frames[Frame_Pos - 1].Status[Status_FrameMissing])
+                    const auto& Input = Inputs[i];
+                    if (!Input->Segments[Segment_Pos].Frames[Frame_Pos - 1].Status[Status_FrameMissing])
                     {
                         RefInput = i;
                         break;
@@ -682,9 +705,10 @@ bool dv_merge_private::Process()
                 int MinAbst = numeric_limits<int>::max();
                 for (size_t i = 0; i < Input_Count; i++)
                 {
-                    if (MinAbst > Inputs[i].Segments[Segment_Pos].Frames[0].Abst)
+                    const auto& Input = Inputs[i];
+                    if (MinAbst > Input->Segments[Segment_Pos].Frames[0].Abst)
                     {
-                        MinAbst = Inputs[i].Segments[Segment_Pos].Frames[0].Abst;
+                        MinAbst = Input->Segments[Segment_Pos].Frames[0].Abst;
                         RefInput = i;
                     }
                 }
@@ -697,11 +721,11 @@ bool dv_merge_private::Process()
                     if (i == RefInput)
                         continue;
                     auto& Input = Inputs[i];
-                    auto& Frames = Input.Segments[Segment_Pos].Frames;
+                    auto& Frames = Input->Segments[Segment_Pos].Frames;
                     auto& Frame = Frames[Frame_Pos];
-                    Input.Segments.insert(Input.Segments.begin() + Segment_Pos, per_segment());
-                    auto& Frames1 = Input.Segments[Segment_Pos].Frames;
-                    auto& Frames2 = Input.Segments[Segment_Pos + 1].Frames;
+                    Input->Segments.insert(Input->Segments.begin() + Segment_Pos, per_segment());
+                    auto& Frames1 = Input->Segments[Segment_Pos].Frames;
+                    auto& Frames2 = Input->Segments[Segment_Pos + 1].Frames;
                     Frames1.insert(Frames1.begin(), Frames2.begin(), Frames2.begin() + Frame_Pos);
                     Frames2.erase(Frames2.begin(), Frames2.begin() + Frame_Pos);
                 }
@@ -717,9 +741,9 @@ bool dv_merge_private::Process()
     for (size_t i = 0; i < Input_Count; i++)
     {
         auto& Input = Inputs[i];
-        if (Input.DoNotUseFile)
+        if (Input->DoNotUseFile)
             continue;
-        auto& Frames = Input.Segments[Segment_Pos].Frames;
+        auto& Frames = Input->Segments[Segment_Pos].Frames;
         auto& Frame = Frames[Frame_Pos];
         if (!Frame.Status[Status_FrameMissing])
             IsMissing--;
@@ -769,9 +793,9 @@ bool dv_merge_private::Process()
     for (size_t i = 0; i < Input_Count; i++)
     {
         auto& Input = Inputs[i];
-        if (Input.DoNotUseFile)
+        if (Input->DoNotUseFile)
             continue;
-        auto& Frames = Input.Segments[Segment_Pos].Frames;
+        auto& Frames = Input->Segments[Segment_Pos].Frames;
         auto& Frame = Frames[Frame_Pos];
         if (BlockStatus_Count < Frame.BlockStatus_Count)
             BlockStatus_Count = Frame.BlockStatus_Count;
@@ -781,27 +805,26 @@ bool dv_merge_private::Process()
     for (size_t i = 0; i < Input_Count; i++)
     {
         auto& Input = Inputs[i];
-        if (Input.DoNotUseFile)
+        if (Input->DoNotUseFile)
             continue;
-        auto& Frames = Input.Segments[Segment_Pos].Frames;
+        auto& Frames = Input->Segments[Segment_Pos].Frames;
         auto& Frame = Frames[Frame_Pos];
-        if (!Frame.Status[Status_FrameMissing])
+        if (!Frame.Status[Status_FrameMissing] && (!IsUsingInputSeek || FirstBadFrame == -1 || Merge_Rewind_Pos == Inputs.size() - 1))
         {
-            if (Input.F)
+            if (Input->F)
             {
-                auto BytesRead = fread(Input.Buffer, 1, Frame.BlockStatus_Count * 80, Input.F);
+                auto BytesRead = fread(Input->Buffer, 1, Frame.BlockStatus_Count * 80, Input->F);
                 if (BytesRead != Frame.BlockStatus_Count * 80)
                     *Log << "File read issue." << endl;
                 if (Frame.RepeatCount)
                 {
-                    if (fseek(Input.F, (long)(Frame.BlockStatus_Count * 80 * Frame.RepeatCount), SEEK_CUR))
+                    if (fseek(Input->F, (long)(Frame.BlockStatus_Count * 80 * Frame.RepeatCount), SEEK_CUR))
                         *Log << "File seek issue." << endl;
                 }
             }
-            else if (Input.DV_Data && !Input.DV_Data->empty())
+            else if (Input->DV_Data && !Input->DV_Data->empty())
             {
-                memcpy(Input.Buffer, Input.DV_Data->front().Data, Input.DV_Data->front().Size); // TODO: avoid this copy
-                Input.DV_Data->pop_front();
+                memcpy(Input->Buffer, Input->DV_Data->front().Data, Input->DV_Data->front().Size); // TODO: avoid this copy
             }
         }
     }
@@ -813,9 +836,9 @@ bool dv_merge_private::Process()
     for (size_t i = 0; i < Input_Count; i++)
     {
         auto& Input = Inputs[i];
-        if (Input.DoNotUseFile)
+        if (Input->DoNotUseFile)
             continue;
-        auto& Frames = Input.Segments[Segment_Pos].Frames;
+        auto& Frames = Input->Segments[Segment_Pos].Frames;
         auto& Frame = Frames[Frame_Pos];
         if (Prefered_Frame == -1 && !Frame.Status[Status_FrameMissing] && !Frame.Status[Status_BlockIssue])
             Prefered_Frame = i;
@@ -828,7 +851,7 @@ bool dv_merge_private::Process()
             else
             {
                 auto& Input2 = Inputs[Prefered_Abst];
-                auto& Frames2 = Input2.Segments[Segment_Pos].Frames;
+                auto& Frames2 = Input2->Segments[Segment_Pos].Frames;
                 auto& Frame2 = Frames2[Frame_Pos];
                 if (Frame2.Abst != Frame.Abst)
                     Prefered_Abst = -2; // Incoherency
@@ -846,7 +869,7 @@ bool dv_merge_private::Process()
         else if (Prefered_Abst != -1)
         {
             auto& Input = Inputs[Prefered_Abst];
-            auto& Frames = Input.Segments[Segment_Pos].Frames;
+            auto& Frames = Input->Segments[Segment_Pos].Frames;
             auto& Frame = Frames[Frame_Pos];
             Out << ' ' << Abst_String(Frame.Abst);
         }
@@ -855,7 +878,7 @@ bool dv_merge_private::Process()
         if (Prefered_TC != -1)
         {
             auto& Input = Inputs[Prefered_TC];
-            auto& Frames = Input.Segments[Segment_Pos].Frames;
+            auto& Frames = Input->Segments[Segment_Pos].Frames;
             auto& Frame = Frames[Frame_Pos];
             Out << ' ' << TC_String(Frame.TC);
         }
@@ -873,9 +896,9 @@ bool dv_merge_private::Process()
             for (size_t i = 0; i < Input_Count; i++)
             {
                 auto& Input = Inputs[i];
-                if (Input.DoNotUseFile)
+                if (Input->DoNotUseFile)
                     continue;
-                auto& Frames = Input.Segments[Segment_Pos].Frames;
+                auto& Frames = Input->Segments[Segment_Pos].Frames;
                 auto& Frame = Frames[Frame_Pos];
                 if (Frame.Status[Status_FrameMissing])
                     *Log << 'M';
@@ -892,7 +915,7 @@ bool dv_merge_private::Process()
     if (IsMissing)
     {
         auto& Input = Inputs[0];
-        auto& Frames = Input.Segments[Segment_Pos].Frames;
+        auto& Frames = Input->Segments[Segment_Pos].Frames;
         auto& Frame = Frames[Frame_Pos];
         Count_Blocks_Missing += Frame.BlockStatus_Count;
         Count_Frames_Missing++; // Don't try to find good blocks if there is no file with good blocks
@@ -912,19 +935,42 @@ bool dv_merge_private::Process()
             *Log << '\n';
     }
 
+    if (!Inputs[1]->DoNotUseFile)
+        for (size_t i = 0; i < Input_Count; i++)
+        {
+            auto& Input = Inputs[i];
+            if (Input->DoNotUseFile)
+                continue;
+            auto& Frames = Input->Segments[Segment_Pos].Frames;
+            auto& Frame = Frames[Frame_Pos];
+            if (!Frame.Status[Status_FrameMissing] && (!IsUsingInputSeek || FirstBadFrame == -1 || Merge_Rewind_Pos == Inputs.size() - 1))
+            {
+                if (Input->F)
+                {
+                }
+                else if (Input->DV_Data && !Input->DV_Data->empty())
+                {
+                    if (!Input->F_Takes)
+                        Input->F_Takes = fopen((Merge_OutputFileName + ".devrescue.take" + to_string(i)).c_str(), "wb");
+                    if (Input->F_Takes)
+                        fwrite(Input->DV_Data->front().Data, Input->DV_Data->front().Size, 1, Input->F_Takes);                        
+                }
+            }
+        }
+
     // Find valid blocks
     bool Seek = false;
     if (Prefered_Frame != -1)
     {
         auto& Input = Inputs[Prefered_Frame];
-        auto& Frames = Input.Segments[Segment_Pos].Frames;
+        auto& Frames = Input->Segments[Segment_Pos].Frames;
         auto& Frame = Frames[Frame_Pos];
         if (!IsUsingInputSeek || FirstBadFrame == -1)
         {
-            Input.Count_Blocks_Used += BlockStatus_Count;
+            Input->Count_Blocks_Used += BlockStatus_Count;
             Count_Blocks_OK += BlockStatus_Count;
             Count_Frames_OK++;
-            memcpy(Output.Buffer, Input.Buffer, Frame.BlockStatus_Count * 80);
+            memcpy(Output.Buffer, Input->Buffer, Frame.BlockStatus_Count * 80);
         }
         Seek = true;
     }
@@ -942,9 +988,9 @@ bool dv_merge_private::Process()
             for (int i = 0; i < Input_Count; i++)
             {
                 auto& Input = Inputs[i];
-                if (Input.DoNotUseFile)
+                if (Input->DoNotUseFile)
                     continue;
-                auto& Frames = Input.Segments[Segment_Pos].Frames;
+                auto& Frames = Input->Segments[Segment_Pos].Frames;
                 auto& Frame = Frames[Frame_Pos];
                 if (Frame.Status[Status_BlockIssue])
                 {
@@ -952,7 +998,7 @@ bool dv_merge_private::Process()
                     {
                     case BlockStatus_NOK:
                         Priorities[i]++;
-                        Inputs[i].Count_Blocks_NOK_Frames_NOK++;
+                        Input->Count_Blocks_NOK_Frames_NOK++;
                         break;
                     default:;
                     }
@@ -972,16 +1018,16 @@ bool dv_merge_private::Process()
             for (size_t i = 0; i < Input_Count; i++)
             {
                 auto& Input = Inputs[i];
-                if (Input.DoNotUseFile)
+                if (Input->DoNotUseFile)
                     continue;
-                auto& Frames = Input.Segments[Segment_Pos].Frames;
+                auto& Frames = Input->Segments[Segment_Pos].Frames;
                 auto& Frame = Frames[Frame_Pos];
                 if (Frame.Status[Status_FrameMissing])
-                    Input.Count_Blocks_Missing_Frames_NOK += BlockStatus_Count;
+                    Input->Count_Blocks_Missing_Frames_NOK += BlockStatus_Count;
             }
             Prefered_Frame = Priorities[0];
-            Inputs[Prefered_Frame].Count_Blocks_Used += BlockStatus_Count;
-            memcpy(Output.Buffer, Inputs[Priorities[0]].Buffer, BlockStatus_Count * 80); // Copy the content of the file having the less issues
+            Inputs[Prefered_Frame]->Count_Blocks_Used += BlockStatus_Count;
+            memcpy(Output.Buffer, Inputs[Priorities[0]]->Buffer, BlockStatus_Count * 80); // Copy the content of the file having the less issues
             for (int b = 0; b < BlockStatus_Count; b++)
             {
                 bool NoIssue = false;
@@ -989,9 +1035,9 @@ bool dv_merge_private::Process()
                 {
                     auto p = Priorities[i];
                     auto& Input = Inputs[p];
-                    if (Input.DoNotUseFile)
+                    if (Input->DoNotUseFile)
                         continue;
-                    auto& Frames = Input.Segments[Segment_Pos].Frames;
+                    auto& Frames = Input->Segments[Segment_Pos].Frames;
                     auto& Frame = Frames[Frame_Pos];
                     if (Frame.Status[Status_BlockIssue])
                     {
@@ -1001,7 +1047,7 @@ bool dv_merge_private::Process()
                             if (!NoIssue)
                             {
                                 if (i)
-                                    memcpy(Output.Buffer + b * 80, Inputs[p].Buffer + b * 80, 80);
+                                    memcpy(Output.Buffer + b * 80, Input->Buffer + b * 80, 80);
                                 ThisFrame_Count_Blocks_Used[p]++;
                             }
                             NoIssue = true;
@@ -1022,8 +1068,9 @@ bool dv_merge_private::Process()
             {
                 if (i != Prefered_Frame)
                 {
-                    Inputs[i].Count_Blocks_Used += ThisFrame_Count_Blocks_Used[i];
-                    Inputs[Prefered_Frame].Count_Blocks_Used -= ThisFrame_Count_Blocks_Used[i];
+                    auto& Input = Inputs[i];
+                    Input->Count_Blocks_Used += ThisFrame_Count_Blocks_Used[i];
+                    Inputs[Prefered_Frame]->Count_Blocks_Used -= ThisFrame_Count_Blocks_Used[i];
                 }
                 if (Verbosity > 5)
                     *Log << ' ' << fixed << setw(Formating_FrameBlockCount_Width) << ThisFrame_Count_Blocks_Used[i];
@@ -1061,7 +1108,9 @@ bool dv_merge_private::Process()
     }
     if (Seek && FirstBadFrame != -1)
     {
-        Inputs[1].DoNotUseFile = false;
+        if (Inputs[1]->DV_Data)
+            Inputs[1]->DV_Data->clear();
+        Inputs[1]->DoNotUseFile = false;
         LastBadFrame = Frame_Pos - 1;
         Frame_Pos = FirstBadFrame;
         FirstBadFrame = -1;
@@ -1069,18 +1118,39 @@ bool dv_merge_private::Process()
         Merge_Rewind_Pos_Next++;
         if (Merge_Rewind_Pos_Next >= Inputs.size())
             Merge_Rewind_Pos_Next = 0;
-        Inputs[Merge_Rewind_Pos_Next].Segments.resize(Inputs[Merge_Rewind_Pos].Segments.size());
-        Inputs[Merge_Rewind_Pos_Next].Segments[Inputs[Merge_Rewind_Pos_Next].Segments.size() - 1].Frames.resize(Frame_Pos);
+        Inputs[Merge_Rewind_Pos_Next]->Segments.resize(Inputs[Merge_Rewind_Pos]->Segments.size());
+        Inputs[Merge_Rewind_Pos_Next]->Segments[Inputs[Merge_Rewind_Pos_Next]->Segments.size() - 1].Frames.resize(Frame_Pos);
         Merge_Rewind_Pos = Merge_Rewind_Pos_Next;
         if (Verbosity > 5)
             *Log << "Rewind to frame " << Frame_Pos << '\n';
         //fseek(Output.F, -120000 * 5, SEEK_CUR);
         auto& Input = Inputs[0];
-        auto& Frames = Input.Segments[Segment_Pos].Frames;
+        auto& Frames = Input->Segments[Segment_Pos].Frames;
         auto& Frame = Frames[Frame_Pos];
         TC = Frame.TC;
         return true;
     }
+
+    // Copy 1 frame in memory, for each input
+    if (FirstBadFrame == -1)
+        for (size_t i = 0; i < Input_Count; i++)
+        {
+            auto& Input = Inputs[i];
+            if (Input->DoNotUseFile)
+                continue;
+            auto& Frames = Input->Segments[Segment_Pos].Frames;
+            auto& Frame = Frames[Frame_Pos];
+            if (!Frame.Status[Status_FrameMissing] && (!IsUsingInputSeek || FirstBadFrame == -1 || Merge_Rewind_Pos == Inputs.size() - 1))
+            {
+                if (Input->F)
+                {
+                }
+                else if (Input->DV_Data && !Input->DV_Data->empty())
+                {
+                    Input->DV_Data->pop_front();
+                }
+            }
+        }
 
     if (Verbosity > 5 && Prefered_Abst == -2)
     {
@@ -1090,7 +1160,7 @@ bool dv_merge_private::Process()
         for (size_t i = 0; i < Input_Count; i++)
         {
             auto& Input = Inputs[i];
-            auto& Frames = Input.Segments[Segment_Pos].Frames;
+            auto& Frames = Input->Segments[Segment_Pos].Frames;
             auto& Frame = Frames[Frame_Pos];
             if (Frame.Abst == numeric_limits<int>::max())
             {
@@ -1109,9 +1179,9 @@ bool dv_merge_private::Process()
         for (size_t i = 1; i < Input_Count; i++)
         {
             auto& Input = Inputs[i];
-            if (Input.DoNotUseFile)
+            if (Input->DoNotUseFile)
                 continue;
-            auto& Frames = Input.Segments[Segment_Pos].Frames;
+            auto& Frames = Input->Segments[Segment_Pos].Frames;
             auto& Frame = Frames[Frame_Pos];
             if (Frame.Status[Status_TimeCodeIssue])
                 HasTimeCodeIssue = true;
@@ -1125,7 +1195,7 @@ bool dv_merge_private::Process()
                 {
                     *Log << ' ';
                     auto& Input = Inputs[i];
-                    auto& Frames = Input.Segments[Segment_Pos].Frames;
+                    auto& Frames = Input->Segments[Segment_Pos].Frames;
                     auto& Frame = Frames[Frame_Pos];
                     *Log << (Frame.Status[Status_TimeCodeIssue] ? "??:??:??:??" : TC_String(Frame.TC));
                 }
@@ -1133,7 +1203,7 @@ bool dv_merge_private::Process()
         }
     }
 
-    if (Prefered_Frame != -1) // Write only if there is some content from this specific frame
+    if (Prefered_Frame != -1 && (!IsUsingInputSeek || FirstBadFrame == -1 || Merge_Rewind_Pos == Inputs.size() - 1)) // Write only if there is some content from this specific frame
         fwrite(Output.Buffer, BlockStatus_Count * 80, 1, Output.F);
     if (Verbosity > 5 && (!IsOK || Prefered_Abst == -2))
         *Log << '\n';
@@ -1143,7 +1213,7 @@ bool dv_merge_private::Process()
 }
 
 //---------------------------------------------------------------------------
-void dv_merge_private::AddFrame(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
+void dv_merge_private::AddFrameAnalysis(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 {
     if (IsUsingInputSeek && Merge_Rewind_Pos != -1 && LastBadFrame != -1)
     {
@@ -1152,7 +1222,12 @@ void dv_merge_private::AddFrame(size_t InputPos, const MediaInfo_Event_DvDif_Ana
             Merge_Rewind_Pos = 0;
             FirstBadFrame = -1;
             LastBadFrame = -1;
-            Inputs[1].DoNotUseFile = true;
+            const auto Input_Count = Inputs.size();
+            for (size_t i = 1; i < Input_Count; i++)
+            {
+                auto& Input = Inputs[i];
+                Input->DoNotUseFile = true;
+            }
         }
         InputPos = Merge_Rewind_Pos;
     }
@@ -1174,6 +1249,11 @@ void dv_merge_private::AddFrame(size_t InputPos, const MediaInfo_Event_DvDif_Ana
 
     // Processing
     while (!Process());
+
+    if (Inputs[0]->DV_Data->empty())
+    {
+        SwitchToFile0 = true;
+    }
 }
 
 //---------------------------------------------------------------------------
@@ -1235,9 +1315,10 @@ bool dv_merge_private::Stats()
         size_t Count_Frames_NotHealthy_Blocks_NotHealthy_Max_Pos;
         for (size_t i = 0; i < Input_Count; i++)
         {
-            if (Count_Frames_NotHealthy_Blocks_NotHealthy_Max > Inputs[i].Count_Blocks_Bad_Frames_NOK())
+            const auto& Input = Inputs[i];
+            if (Count_Frames_NotHealthy_Blocks_NotHealthy_Max > Input->Count_Blocks_Bad_Frames_NOK())
             {
-                Count_Frames_NotHealthy_Blocks_NotHealthy_Max = Inputs[i].Count_Blocks_Bad_Frames_NOK();
+                Count_Frames_NotHealthy_Blocks_NotHealthy_Max = Input->Count_Blocks_Bad_Frames_NOK();
                 Count_Frames_NotHealthy_Blocks_NotHealthy_Max_Pos = i;
             }
         }
@@ -1256,11 +1337,12 @@ bool dv_merge_private::Stats()
     *Log << "Usage of input files:\n";
     for (size_t i = 0; i < Input_Count; i++)
     {
-        if (Inputs[i].Count_Blocks_Used)
+        const auto& Input = Inputs[i];
+        if (Input->Count_Blocks_Used)
         {
-            ShowBlocks(Inputs[i].Count_Blocks_Used, Count_Blocks_Total);
+            ShowBlocks(Input->Count_Blocks_Used, Count_Blocks_Total);
             *Log << " from file " << i << "     used.";
-            ShowFrames(Inputs[i].Count_Frames_Repeated, Count_Frames_Total, " were repetition and discarded.");
+            ShowFrames(Input->Count_Frames_Repeated, Count_Frames_Total, " were repetition and discarded.");
         }
         else
         {
@@ -1278,8 +1360,9 @@ bool dv_merge_private::Stats()
     *Log << "Input files summary:\n";
     for (size_t i = 0; i < Input_Count; i++)
     {
-        auto Blocks_Bad = Inputs[i].Count_Blocks_Bad();
-        auto Frames_Bad = Inputs[i].Count_Frames_Bad();
+        auto& Input = Inputs[i];
+        auto Blocks_Bad = Input->Count_Blocks_Bad();
+        auto Frames_Bad = Input->Count_Frames_Bad();
         auto Blocks_Bad_Ratio = (float)Blocks_Bad / Count_Blocks_Total;
         auto Frames_Bad_Ratio = (float)Frames_Bad / Count_Frames_Total;
         if (Blocks_Bad_MinRatio > Blocks_Bad_Ratio)
@@ -1336,7 +1419,7 @@ bool dv_merge_private::Stats()
 }
 
 //---------------------------------------------------------------------------
-void dv_merge_private::AddFrame(size_t InputPos, const MediaInfo_Event_Global_Demux_4* FrameData)
+void dv_merge_private::AddFrameData(size_t InputPos, const uint8_t* Buffer, size_t Buffer_Size)
 {
     // Coherency check
     lock_guard<mutex> Lock(Mutex);
@@ -1347,7 +1430,7 @@ void dv_merge_private::AddFrame(size_t InputPos, const MediaInfo_Event_Global_De
 
     // Add frame
     auto& Input = Inputs[InputPos];
-    if (!Input.DV_Data)
-        Input.DV_Data = new dv_data;
-    Input.DV_Data->push_back((uint8_t*)FrameData->Content, FrameData->Content_Size);
+    if (!Input->DV_Data)
+        Input->DV_Data = new dv_data;
+    Input->DV_Data->push_back(Buffer, Buffer_Size);
 }

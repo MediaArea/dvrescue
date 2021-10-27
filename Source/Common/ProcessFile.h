@@ -30,6 +30,10 @@ class AVFCtlWrapper;
 #ifdef ENABLE_SIMULATOR
 class SimulatorWrapper;
 #endif
+#if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
+class FileWrapper;
+extern FileWrapper* Wrapper;
+#endif
 //---------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------
@@ -112,8 +116,8 @@ public:
     void RewindToAbst(int Abst);
     #endif
     void AddChange(const MediaInfo_Event_DvDif_Change_0* FrameData);
-    void AddFrame(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData);
-    void AddFrame(const MediaInfo_Event_Global_Demux_4* FrameData);
+    void AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData);
+    void AddFrameData(const MediaInfo_Event_Global_Demux_4* FrameData);
 
     // Merge
     void Merge_Finish() { Merge.Finish(); }

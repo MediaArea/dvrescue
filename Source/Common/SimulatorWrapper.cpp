@@ -14,8 +14,11 @@ using namespace ZenLib;
 
 struct ctl
 {
-    playback_mode Mode;
-    float Speed;
+    playback_mode Mode = Playback_Mode_Playing;
+    float Speed = 1.0;
+    size_t Pos = 0;
+    vector<File*> F;
+    size_t MaxParsed = 0;
 };
 
 SimulatorWrapper::SimulatorWrapper()
@@ -24,25 +27,32 @@ SimulatorWrapper::SimulatorWrapper()
 
 void SimulatorWrapper::CreateCaptureSession(const ZenLib::Ztring &FileName, FileWrapper* Wrapper)
 {
-    Ctl = new ctl;
-    ((ctl*)Ctl)->Mode = Playback_Mode_Playing;
-    ((ctl*)Ctl)->Speed = 1.0;
+    auto Ctl = new ctl;
+    Priv = Ctl;
 
-    vector<File*> F;
-    if (File::Exists(FileName))
-      F.push_back(new File(FileName));
-    //for (;;)
+    for(size_t i=0;;i++)
     {
-        
+        auto FileNameExt=FileName+__T('.')+Ztring::ToZtring(i);
+        if (!File::Exists(FileNameExt))
+            break;
+        Ctl->F.push_back(new File(FileNameExt));
     }
 
     int8u* Buffer = new int8u[120000];
     for (;;)
     {
-        if (((ctl*)Ctl)->Speed < 0)
-            F[0]->GoTo(-120000*2, File::FromCurrent);
-        if (F[0]->Read(Buffer, 120000)!=120000)
+        if (Ctl->Speed < 0)
+        {
+            Ctl->F[Ctl->Pos]->GoTo(-120000 * 2, File::FromCurrent);
+            Ctl->F[Ctl->Pos]->Position_Get();
+        }
+        if (Ctl->F[Ctl->Pos]->Read(Buffer, 120000)!=120000)
             break;
+        auto SeekPos = Ctl->F[Ctl->Pos]->Position_Get();
+        if (Ctl->Pos && SeekPos >= Ctl->MaxParsed)
+            Ctl->Pos = 0;
+        if (!Ctl->Pos && Ctl->MaxParsed < SeekPos)
+            Ctl->MaxParsed = SeekPos;
         Wrapper->Parse_Buffer(Buffer, 120000);
     }
 }
@@ -53,6 +63,15 @@ SimulatorWrapper::~SimulatorWrapper()
 
 void SimulatorWrapper::SetPlaybackMode(playback_mode Mode, float Speed)
 {
-    ((ctl*)Ctl)->Mode = Mode;
-    ((ctl*)Ctl)->Speed = Speed;
+    auto Ctl = (ctl*)Priv;
+    Ctl->Mode = Mode;
+    Ctl->Speed = Speed;
+    if (Speed < 0)
+    {
+        auto SeekPos = Ctl->F[Ctl->Pos]->Position_Get();
+        if (Ctl->Pos < Ctl->F.size())
+            Ctl->Pos++;
+        Ctl->F[Ctl->Pos]->GoTo(SeekPos);
+        Ctl->F[Ctl->Pos]->Position_Get();
+    }
 }

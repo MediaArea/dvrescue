@@ -14,6 +14,10 @@
 #ifdef ENABLE_SIMULATOR
 #include "Common/SimulatorWrapper.h"
 #endif
+#if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
+#include "Common/ProcessFileWrapper.h"
+FileWrapper* Wrapper = nullptr;
+#endif
 #include "ZenLib/Ztring.h"
 #include "Output.h"
 using namespace ZenLib;
@@ -46,15 +50,15 @@ void __stdcall Event_CallBackFunction(unsigned char* Data_Content, size_t Data_S
     case MediaInfo_Parser_DvDif:
         switch (EventID)
         {
-        case MediaInfo_Event_DvDif_Analysis_Frame: if (EventVersion == 1 && Data_Size >= sizeof(struct MediaInfo_Event_DvDif_Analysis_Frame_1)) UserHandler->AddFrame((MediaInfo_Event_DvDif_Analysis_Frame_1*)Event_Generic); break;
+        case MediaInfo_Event_DvDif_Analysis_Frame: if (EventVersion == 1 && Data_Size >= sizeof(struct MediaInfo_Event_DvDif_Analysis_Frame_1)) UserHandler->AddFrameAnalysis((MediaInfo_Event_DvDif_Analysis_Frame_1*)Event_Generic); break;
         case MediaInfo_Event_DvDif_Change: if (EventVersion == 0 && Data_Size >= sizeof(struct MediaInfo_Event_DvDif_Change_0)) UserHandler->AddChange((MediaInfo_Event_DvDif_Change_0*)Event_Generic); break;
-        case MediaInfo_Event_Global_Demux: if (EventVersion == 4 && Data_Size >= sizeof(struct MediaInfo_Event_Global_Demux_4)) UserHandler->AddFrame((MediaInfo_Event_Global_Demux_4*)Event_Generic); break;
+        case MediaInfo_Event_Global_Demux: if (EventVersion == 4 && Data_Size >= sizeof(struct MediaInfo_Event_Global_Demux_4)) UserHandler->AddFrameData((MediaInfo_Event_Global_Demux_4*)Event_Generic); break;
         }
         break;
     case MediaInfo_Parser_Global:
         switch (EventID)
         {
-        case MediaInfo_Event_Global_Demux: if (EventVersion == 4 && Data_Size >= sizeof(struct MediaInfo_Event_Global_Demux_4)) UserHandler->AddFrame((MediaInfo_Event_Global_Demux_4*)Event_Generic); break;
+        case MediaInfo_Event_Global_Demux: if (EventVersion == 4 && Data_Size >= sizeof(struct MediaInfo_Event_Global_Demux_4)) UserHandler->AddFrameData((MediaInfo_Event_Global_Demux_4*)Event_Generic); break;
         }
         break;
     }
@@ -81,7 +85,7 @@ void file::Parse(const String& FileName)
 {
     MI.Option(__T("File_Event_CallBackFunction"), __T("CallBack=memory://") + Ztring::ToZtring((size_t)&Event_CallBackFunction) + __T(";UserHandler=memory://") + Ztring::ToZtring((size_t)this));
     MI.Option(__T("File_DvDif_Analysis"), __T("1"));
-    if (Merge_InputFileNames.size() && (Merge_InputFileNames.front() == "-" || Merge_InputFileNames.front().find("device://")==0)) // Only if from stdin (not supported in other cases)
+    if (Merge_InputFileNames.size() && (Merge_InputFileNames.front() == "-" || FileCanSeekErrors(Merge_InputFileNames.front()))) // Only if from stdin (not supported in other cases)
         MI.Option(__T("File_Demux_Unpacketize"), __T("1"));
 
     if (Verbosity == 10)
@@ -111,10 +115,10 @@ void file::Parse(const String& FileName)
     #ifdef ENABLE_SIMULATOR
     else if (FileName.rfind(__T("simulator://"), 0)==0)
     {
-        FileWrapper Wrapper(this);
+        Wrapper = new FileWrapper(this);
         MI.Open_Buffer_Init();
         Controller = new SimulatorWrapper();
-        Controller->CreateCaptureSession(FileName.substr(12), &Wrapper);
+        Controller->CreateCaptureSession(FileName.substr(12), Wrapper);
         MI.Open_Buffer_Finalize();
     }
     #endif
@@ -187,6 +191,12 @@ void file::RewindToTimeCode(TimeCode TC)
     RewindMode=Rewind_Mode_TimeCode;
     RewindTo_TC=TC;
     Controller->SetPlaybackMode(Playback_Mode_Playing, -1.0);
+    Wrapper->File_Seek = new file();
+    Wrapper->File_Seek->MI.Option(__T("File_Event_CallBackFunction"), __T("CallBack=memory://") + Ztring::ToZtring((size_t)&Event_CallBackFunction) + __T(";UserHandler=memory://") + Ztring::ToZtring((size_t)this));
+    Wrapper->File_Seek->MI.Option(__T("File_DvDif_Analysis"), __T("1"));
+    Wrapper->File_Seek->MI.Option(__T("File_Demux_Unpacketize"), __T("1"));
+    Wrapper->File_Seek->MI.Open_Buffer_Init();
+    Wrapper->File_Seek_IsUsed = true;
 }
 #endif
 
@@ -239,7 +249,7 @@ void file::AddChange(const MediaInfo_Event_DvDif_Change_0* FrameData)
 }
 
 //---------------------------------------------------------------------------
-void file::AddFrame(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
+void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 {
     #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
     abst_bf AbstBf_Temp(FrameData->AbstBf);
@@ -253,7 +263,25 @@ void file::AddFrame(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
             {
                 RewindMode=Rewind_Mode_None;
                 Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
-                return;
+                Wrapper->File_Seek_IsUsed = false;
+                while (Wrapper->Files.size() <= 1)
+                {
+                    Wrapper->Files.push_back(new file);
+                    Wrapper->Files[Wrapper->Files.size()-1]->MI.Option(__T("File_Event_CallBackFunction"), __T("CallBack=memory://") + Ztring::ToZtring((size_t)&Event_CallBackFunction) + __T(";UserHandler=memory://") + Ztring::ToZtring((size_t)this));
+                    Wrapper->Files[Wrapper->Files.size()-1]->MI.Option(__T("File_DvDif_Analysis"), __T("1"));
+                    Wrapper->Files[Wrapper->Files.size()-1]->MI.Option(__T("File_Demux_Unpacketize"), __T("1"));
+                    Wrapper->Files[Wrapper->Files.size()-1]->MI.Open_Buffer_Init();
+                }
+                Wrapper->File_Pos++;
+                if (Wrapper->File_Pos > 1)
+                    Wrapper->File_Pos = 0;
+                Merge_FilePos = Wrapper->File_Pos;
+                if (Wrapper->Buffer_LastFrame)
+                {
+                    Merge.AddFrameData(Merge_FilePos, Wrapper->Buffer_LastFrame, 120000);
+                    delete[] Wrapper->Buffer_LastFrame;
+                    Wrapper->Buffer_LastFrame = nullptr;
+                }
             }
             else
                 return; //Continue in rewind mode
@@ -270,7 +298,6 @@ void file::AddFrame(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
             {
                 RewindMode=Rewind_Mode_None;
                 Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
-                return;
             }
             else
                 return; //Continue in rewind mode
@@ -344,15 +371,20 @@ void file::AddFrame(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
         no_sourceorcontrol_aud_set_in_first_frame = false;
     }
 
-    if (!Merge_OutputFileName.empty())
+    Merge.AddFrameanAnalysis(Merge_FilePos, FrameData);
+    #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
+    if (FileCanSeekErrors(Merge_InputFileNames.front()) && Merge.TC.HasValue())
     {
-        Merge.AddFrame(Merge_FilePos, FrameData);
-        if (Merge.TC.HasValue())
-        {
-            RewindToTimeCode(Merge.TC);
-            Merge.TC = TimeCode();
-        }
+        RewindToTimeCode(Merge.TC);
+        Merge.TC = TimeCode();
     }
+    if (Merge.SwitchToFile0)
+    {
+        Merge_FilePos = 0;
+        Wrapper->File_Pos = 0;
+        Merge.SwitchToFile0 = false;
+    }
+    #endif
 
     // Information
     if (!Merge_FilePos && Verbosity > 0 && Verbosity <= 7)
@@ -386,18 +418,22 @@ void file::AddFrame(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 }
 
 //---------------------------------------------------------------------------
-void file::AddFrame(const MediaInfo_Event_Global_Demux_4* FrameData)
-{
-    #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
-    if (RewindMode!=Rewind_Mode_None)
-        return;
-    #endif
-
+void file::AddFrameData(const MediaInfo_Event_Global_Demux_4* FrameData) {
     // DV frame
     if (!FrameData->StreamIDs_Size || FrameData->StreamIDs[FrameData->StreamIDs_Size-1]==-1)
     {
-        if (!Merge_OutputFileName.empty() && (Merge_InputFileNames.empty() || Merge_InputFileNames[0] == "-" || Merge_InputFileNames[0].find("device://") == 0 || Merge_InputFileNames[0].find("simulator://") == 0)) // Only for stdin
-            Merge.AddFrame(Merge_FilePos, FrameData);
+        #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
+        if (RewindMode!=Rewind_Mode_None)
+        {
+            if (!Wrapper->Buffer_LastFrame)
+                Wrapper->Buffer_LastFrame = new uint8_t[120000];
+            memcpy(Wrapper->Buffer_LastFrame, FrameData->Content, FrameData->Content_Size);
+            return;
+        }
+        #endif
+
+        if (!Merge_OutputFileName.empty() && (Merge_InputFileNames.empty() || Merge_InputFileNames[0] == "-" || FileCanSeekErrors(Merge_InputFileNames.front()))) // Only for stdin
+            Merge.AddFrameData(Merge_FilePos, (uint8_t*)FrameData->Content, FrameData->Content_Size);
         return;
     }
 

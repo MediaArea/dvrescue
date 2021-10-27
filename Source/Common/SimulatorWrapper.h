@@ -42,5 +42,5 @@ class SimulatorWrapper {
     void WaitForSessionEnd();
 
 private:
-    void* Ctl;
+    void* Priv;
 };

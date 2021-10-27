@@ -9,6 +9,7 @@
 
 #include <cstddef> //for std::size_t, native size_t isn't avaiable in obj-c++ mode
 #include <string>
+#include <vector>
 
 class file;
 
@@ -21,6 +22,12 @@ public:
     FileWrapper(file* File);
     void Parse_Buffer(const std::uint8_t* Buffer, std::size_t Buffer_Size);
 
+    file* File_Seek = nullptr;
+    bool File_Seek_IsUsed = false;
+    size_t File_Pos = 0;
+    std::vector<file*> Files;
+
+    uint8_t* Buffer_LastFrame = nullptr;
+
  private:
-    file* File;
 };
