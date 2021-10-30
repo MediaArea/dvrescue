@@ -8,6 +8,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include "TimeCode.h"
 using namespace std;
 //---------------------------------------------------------------------------
 
@@ -42,4 +43,7 @@ public:
     void AddFrameanAnalysis(size_t Merge_FilePos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData);
     void AddFrameData(size_t Merge_FilePos, const uint8_t* Buffer, size_t Buffer_Size);
     void Finish();
+
+    TimeCode TC;
+    bool SwitchToFile0 = false;
 };

@@ -297,6 +297,15 @@ namespace
         {
             return Count_Frames_OK + Count_Frames_NOK + Count_Frames_Missing;
         }
+
+        size_t FirstBadFrame = -1;
+        size_t LastBadFrame = -1;
+        size_t Merge_Rewind_Pos = -1;
+        bool   IsUsingInputSeek = false;
+
+    public:
+        TimeCode TC;
+        bool SwitchToFile0 = false;
     };
     dv_merge_private Merge_Private;
 }
@@ -305,12 +314,20 @@ namespace
 void dv_merge::AddFrameanAnalysis(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 {
     Merge_Private.AddFrameAnalysis(InputPos, FrameData);
+    TC = Merge_Private.TC;
+    Merge_Private.TC = TimeCode();
+    SwitchToFile0 = Merge_Private.SwitchToFile0;
+    Merge_Private.SwitchToFile0 = false;
 }
 
 //---------------------------------------------------------------------------
 void dv_merge::AddFrameData(size_t InputPos, const uint8_t* Buffer, size_t Buffer_Size)
 {
     Merge_Private.AddFrameData(InputPos, Buffer, Buffer_Size);
+    TC = Merge_Private.TC;
+    Merge_Private.TC = TimeCode();
+    SwitchToFile0 = Merge_Private.SwitchToFile0;
+    Merge_Private.SwitchToFile0 = false;
 }
 
 //---------------------------------------------------------------------------
@@ -608,6 +625,8 @@ bool dv_merge_private::Process()
         for (size_t i = 0; i < Input_Count; i++)
         {
             auto& Input = Inputs[i];
+            if (Input->DoNotUseFile)
+                continue;
             auto& Frames = Input->Segments[Segment_Pos].Frames;
             if (Frames_Status_Max > Frames.size())
                 Frames_Status_Max = Frames.size();
@@ -712,6 +731,8 @@ bool dv_merge_private::Process()
     for (size_t i = 0; i < Input_Count; i++)
     {
         auto& Input = Inputs[i];
+        if (Input->DoNotUseFile)
+            continue;
         auto& Frames = Input->Segments[Segment_Pos].Frames;
         auto& Frame = Frames[Frame_Pos];
         if (!Frame.Status[Status_FrameMissing])
@@ -775,9 +796,11 @@ bool dv_merge_private::Process()
     for (size_t i = 0; i < Input_Count; i++)
     {
         auto& Input = Inputs[i];
+        if (Input->DoNotUseFile)
+            continue;
         auto& Frames = Input->Segments[Segment_Pos].Frames;
         auto& Frame = Frames[Frame_Pos];
-        if (!Frame.Status[Status_FrameMissing])
+        if (!Frame.Status[Status_FrameMissing] && (!IsUsingInputSeek || FirstBadFrame == -1 || Merge_Rewind_Pos == Inputs.size() - 1))
         {
             if (Input->F)
             {
@@ -804,6 +827,8 @@ bool dv_merge_private::Process()
     for (size_t i = 0; i < Input_Count; i++)
     {
         auto& Input = Inputs[i];
+        if (Input->DoNotUseFile)
+            continue;
         auto& Frames = Input->Segments[Segment_Pos].Frames;
         auto& Frame = Frames[Frame_Pos];
         if (Prefered_Frame == -1 && !Frame.Status[Status_FrameMissing] && !Frame.Status[Status_BlockIssue])
@@ -862,6 +887,8 @@ bool dv_merge_private::Process()
             for (size_t i = 0; i < Input_Count; i++)
             {
                 auto& Input = Inputs[i];
+                if (Input->DoNotUseFile)
+                    continue;
                 auto& Frames = Input->Segments[Segment_Pos].Frames;
                 auto& Frame = Frames[Frame_Pos];
                 if (Frame.Status[Status_FrameMissing])
@@ -959,6 +986,8 @@ bool dv_merge_private::Process()
             for (size_t i = 0; i < Input_Count; i++)
             {
                 auto& Input = Inputs[i];
+                if (Input->DoNotUseFile)
+                    continue;
                 auto& Frames = Input->Segments[Segment_Pos].Frames;
                 auto& Frame = Frames[Frame_Pos];
                 if (Frame.Status[Status_FrameMissing])
@@ -974,6 +1003,8 @@ bool dv_merge_private::Process()
                 {
                     auto p = Priorities[i];
                     auto& Input = Inputs[p];
+                    if (Input->DoNotUseFile)
+                        continue;
                     auto& Frames = Input->Segments[Segment_Pos].Frames;
                     auto& Frame = Frames[Frame_Pos];
                     if (Frame.Status[Status_BlockIssue])
@@ -1042,7 +1073,7 @@ bool dv_merge_private::Process()
             auto& Frame = Frames[Frame_Pos];
             if (Frame.Abst == numeric_limits<int>::max())
             {
-                *Log << Frame.Status[Status_FrameMissing] ? "       " : " missin"; // missing abst but only 6 chars for abst
+                *Log << Frame.Status[Status_FrameMissing] ? "       " : " missing"; // missing abst but only 6 chars for abst
             }
             else
             {
@@ -1110,6 +1141,11 @@ void dv_merge_private::AddFrameAnalysis(size_t InputPos, const MediaInfo_Event_D
 
     // Processing
     while (!Process());
+
+    if (Inputs[0]->DV_Data && Inputs[0]->DV_Data->empty())
+    {
+        SwitchToFile0 = true;
+    }
 }
 
 //---------------------------------------------------------------------------
