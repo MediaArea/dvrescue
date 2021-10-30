@@ -657,6 +657,8 @@ bool dv_merge_private::Process()
         i = 0;
         Segment_Pos++;
         Frame_Pos = 0;
+        FirstBadFrame = -1;
+        LastBadFrame = -1;
         if (TcSyncStart())
             return true;
     }
@@ -1115,14 +1117,11 @@ bool dv_merge_private::Process()
     }
     if (Seek && FirstBadFrame != -1)
     {
-        if (Inputs[1]->DV_Data)
-            Inputs[1]->DV_Data->clear();
         LastBadFrame = Frame_Pos - 1;
         Frame_Pos = FirstBadFrame;
         FirstBadFrame = -1;
         if (Verbosity > 5)
             *Log << "Rewind to frame " << Frame_Pos << '\n';
-        //fseek(Output.F, -120000 * 5, SEEK_CUR);
         auto& Input = Inputs[0];
         auto& Frames = Input->Segments[Segment_Pos].Frames;
         auto& Frame = Frames[Frame_Pos];

@@ -69,7 +69,7 @@ void SimulatorWrapper::SetPlaybackMode(playback_mode Mode, float Speed)
     if (Speed < 0)
     {
         auto SeekPos = Ctl->F[Ctl->Pos]->Position_Get();
-        if (Ctl->Pos < Ctl->F.size())
+        if (Ctl->Pos + 1 < Ctl->F.size())
             Ctl->Pos++;
         Ctl->F[Ctl->Pos]->GoTo(SeekPos);
         Ctl->F[Ctl->Pos]->Position_Get();
