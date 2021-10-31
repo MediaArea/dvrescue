@@ -103,9 +103,9 @@ void file::Parse(const String& FileName)
         if (Device<AVFCtlWrapper::GetDeviceCount())
         {
             Controller=new AVFCtlWrapper(Device);
-            FileWrapper Wrapper(this);
+            Wrapper = new FileWrapper(this);
             MI.Open_Buffer_Init();
-            Controller->CreateCaptureSession(&Wrapper);
+            Controller->CreateCaptureSession(Wrapper);
             Controller->StartCaptureSession();
             Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
             Controller->WaitForSessionEnd();

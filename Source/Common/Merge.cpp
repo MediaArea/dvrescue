@@ -998,7 +998,10 @@ bool dv_merge_private::Process()
             {
                 auto& Input = Inputs[i];
                 if (Input->DoNotUseFile)
+                {
+                    Priorities[i]++;
                     continue;
+                }
                 auto& Frames = Input->Segments[Segment_Pos].Frames;
                 auto& Frame = Frames[Frame_Pos];
                 if (Frame.Status[Status_BlockIssue])
