@@ -1120,9 +1120,19 @@ bool dv_merge_private::Process()
     }
     if (Seek && FirstBadFrame != -1)
     {
+        if (Inputs[1]->DV_Data)
+            Inputs[1]->DV_Data->clear();
+        Inputs[1]->DoNotUseFile = false;
         LastBadFrame = Frame_Pos - 1;
         Frame_Pos = FirstBadFrame;
         FirstBadFrame = -1;
+        auto Merge_Rewind_Pos_Next = Merge_Rewind_Pos;
+        Merge_Rewind_Pos_Next++;
+        if (Merge_Rewind_Pos_Next >= Inputs.size())
+            Merge_Rewind_Pos_Next = 0;
+        Inputs[Merge_Rewind_Pos_Next]->Segments.resize(Inputs[Merge_Rewind_Pos]->Segments.size());
+        Inputs[Merge_Rewind_Pos_Next]->Segments[Inputs[Merge_Rewind_Pos_Next]->Segments.size() - 1].Frames.resize(Frame_Pos);
+        Merge_Rewind_Pos = Merge_Rewind_Pos_Next;
         if (Verbosity > 5)
             *Log << "Rewind to frame " << Frame_Pos << '\n';
         auto& Input = Inputs[0];

@@ -267,7 +267,7 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                 RewindMode=Rewind_Mode_None;
                 Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
                 Wrapper->File_Seek_IsUsed = false;
-                while (Wrapper->Files.size() <= 0)
+                while (Wrapper->Files.size() <= 1)
                 {
                     Wrapper->Files.push_back(new file);
                     Wrapper->Files[Wrapper->Files.size()-1]->MI.Option(__T("File_Event_CallBackFunction"), __T("CallBack=memory://") + Ztring::ToZtring((size_t)&Event_CallBackFunction) + __T(";UserHandler=memory://") + Ztring::ToZtring((size_t)this));
@@ -277,7 +277,7 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                     Wrapper->Files[Wrapper->Files.size()-1]->MI.Open_Buffer_Init();
                 }
                 Wrapper->File_Pos++;
-                if (Wrapper->File_Pos > 0)
+                if (Wrapper->File_Pos > 1)
                     Wrapper->File_Pos = 0;
                 Merge_FilePos = Wrapper->File_Pos;
                 if (Wrapper->Buffer_LastFrame)
