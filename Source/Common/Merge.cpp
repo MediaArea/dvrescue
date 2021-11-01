@@ -33,7 +33,7 @@ static ostream* Log;
 string MergeInfo_OutputFileName;
 uint8_t Verbosity = 5;
 uint8_t UseAbst = 0;
-size_t RewindCount = 0;
+size_t RewindCount = 1;
 //---------------------------------------------------------------------------
 
 namespace
@@ -868,6 +868,8 @@ bool dv_merge_private::Process()
             }
         }
     }
+    if (Prefered_Abst == -2)
+        Prefered_Abst = -1; //TEMP
 
     if (Verbosity > 5 && !Count_Last_Missing_Frames && !Count_Last_OK_Frames)
     {
@@ -968,7 +970,10 @@ bool dv_merge_private::Process()
                     if (!Input->F_Takes)
                         Input->F_Takes = fopen((Merge_OutputFileName + ".devrescue.take" + to_string(i)).c_str(), "wb");
                     if (Input->F_Takes)
+                    {
                         fwrite(Input->DV_Data->front().Data, Input->DV_Data->front().Size, 1, Input->F_Takes);                        
+                        fflush(Output.F);
+                    }
                 }
             }
         }
@@ -1224,7 +1229,10 @@ bool dv_merge_private::Process()
     }
 
     if (Prefered_Frame != -1 && (!IsUsingInputSeek || FirstBadFrame == -1 || Merge_Rewind_Pos == Inputs.size() - 1)) // Write only if there is some content from this specific frame
+    {
         fwrite(Output.Buffer, BlockStatus_Count * 80, 1, Output.F);
+        fflush(Output.F);
+    }
     if (Verbosity > 5 && (!IsOK || Prefered_Abst == -2))
         *Log << '\n';
 
