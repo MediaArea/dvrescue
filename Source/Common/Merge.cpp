@@ -480,7 +480,7 @@ bool dv_merge_private::AppendFrameToList(size_t InputPos, const MediaInfo_Event_
     // Time code jumps - after first frame
     timecode TC_Temp(FrameData->TimeCode);
     if (TC_Temp.HasValue())
-        CurrentFrame.TC = TimeCode(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), 30 /*TEMP*/, TC_Temp.DropFrame());
+        CurrentFrame.TC = TimeCode(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
     if (!Frames.empty() && Frames.back().TC.HasValue())
     {
         TimeCode TC_Previous(Frames.back().TC);
