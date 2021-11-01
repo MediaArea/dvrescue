@@ -102,9 +102,9 @@ void file::Parse(const String& FileName)
         size_t Device=(size_t)ZFileName.SubString(__T("device://"), __T("")).To_int64u();
         if (Device<AVFCtlWrapper::GetDeviceCount())
         {
-            Controller=new AVFCtlWrapper(Device);
             Wrapper = new FileWrapper(this);
             MI.Open_Buffer_Init();
+            Controller = new AVFCtlWrapper(Device);
             Controller->CreateCaptureSession(Wrapper);
             Controller->StartCaptureSession();
             Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
@@ -259,6 +259,11 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
     if (RewindMode==Rewind_Mode_TimeCode)
     {
         timecode TC_Temp(FrameData->TimeCode);
+        auto Seconds = TC_Temp.TimeInSeconds();
+        TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60, Seconds % 60,
+                          TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25,
+                          TC_Temp.DropFrame());
+        cerr << "Rewinding     " << TC_Temp2.ToString() << "\n";
         if (TC_Temp.HasValue())
         {
             TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), 30 /*TEMP*/, TC_Temp.DropFrame());
@@ -267,7 +272,7 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                 RewindMode=Rewind_Mode_None;
                 Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
                 Wrapper->File_Seek_IsUsed = false;
-                while (Wrapper->Files.size() <= 1)
+                while (Wrapper->Files.size() <= RewindCount)
                 {
                     Wrapper->Files.push_back(new file);
                     Wrapper->Files[Wrapper->Files.size()-1]->MI.Option(__T("File_Event_CallBackFunction"), __T("CallBack=memory://") + Ztring::ToZtring((size_t)&Event_CallBackFunction) + __T(";UserHandler=memory://") + Ztring::ToZtring((size_t)this));
@@ -277,9 +282,10 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                     Wrapper->Files[Wrapper->Files.size()-1]->MI.Open_Buffer_Init();
                 }
                 Wrapper->File_Pos++;
-                if (Wrapper->File_Pos > 1)
+                if (Wrapper->File_Pos > RewindCount)
                     Wrapper->File_Pos = 0;
                 Merge_FilePos = Wrapper->File_Pos;
+                Wrapper->Files[Merge_FilePos]->MI.Open_Buffer_Init();
                 if (Wrapper->Buffer_LastFrame)
                 {
                     Merge.AddFrameData(Merge_FilePos, Wrapper->Buffer_LastFrame, 120000);

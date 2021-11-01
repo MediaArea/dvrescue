@@ -33,6 +33,7 @@ class SimulatorWrapper;
 #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
 class FileWrapper;
 extern FileWrapper* Wrapper;
+extern size_t RewindCount;
 #endif
 //---------------------------------------------------------------------------
 

@@ -33,6 +33,7 @@ static ostream* Log;
 string MergeInfo_OutputFileName;
 uint8_t Verbosity = 5;
 uint8_t UseAbst = 0;
+size_t RewindCount = 0;
 //---------------------------------------------------------------------------
 
 namespace
@@ -407,14 +408,17 @@ bool dv_merge_private::Init()
         *Log << "|Comments" << endl;
     }
 
-    if (Inputs.size() < 2 && FileCanSeekErrors(Merge_InputFileNames.front()))
+    if (!IsUsingInputSeek && Inputs.size() < 2 && FileCanSeekErrors(Merge_InputFileNames.front()))
     {
-        Inputs.reserve(2);
+        Inputs.reserve(1 + RewindCount);
         IsUsingInputSeek = true;
         Merge_Rewind_Pos = 0;
-        auto Input = new per_file;
-        Input->DoNotUseFile = true;
-        Inputs.push_back(Input);
+        for (size_t i = 0; i < RewindCount; i++)
+        {
+          auto Input = new per_file;
+          Input->DoNotUseFile = true;
+          Inputs.push_back(Input);
+        }
     }
 
     return false;
@@ -482,7 +486,7 @@ bool dv_merge_private::AppendFrameToList(size_t InputPos, const MediaInfo_Event_
         TimeCode TC_Previous(Frames.back().TC);
         if (CurrentFrame.TC.HasValue())
         {
-            if (CurrentFrame.TC.HasValue() && CurrentFrame.TC.ToFrames() < TC_Previous.ToFrames())
+            if (CurrentFrame.TC.HasValue() && CurrentFrame.TC.ToFrames() <= TC_Previous.ToFrames())
             {
                 Input->Segments.resize(Input->Segments.size() + 1);
                 Input->Segments.back().Frames.emplace_back(move(CurrentFrame));
@@ -647,6 +651,8 @@ bool dv_merge_private::Process()
         auto Segment_Pos1 = Segment_Pos + 1;
         for (const auto Input : Inputs)
         {
+            if (Input->DoNotUseFile)
+                continue;
             if (Segment_Pos1 >= Input->Segments.size())
                 return true;
         }
@@ -944,7 +950,7 @@ bool dv_merge_private::Process()
             *Log << '\n';
     }
 
-    if (IsUsingInputSeek && !Inputs[1]->DoNotUseFile)
+    if (IsUsingInputSeek && Inputs.size() > 1 && !Inputs[1]->DoNotUseFile)
         for (size_t i = 0; i < Input_Count; i++)
         {
             auto& Input = Inputs[i];
@@ -1120,9 +1126,12 @@ bool dv_merge_private::Process()
     }
     if (Seek && FirstBadFrame != -1)
     {
-        if (Inputs[1]->DV_Data)
-            Inputs[1]->DV_Data->clear();
-        Inputs[1]->DoNotUseFile = false;
+        if (Inputs.size() > 1)
+        {
+            if (Inputs[1]->DV_Data)
+              Inputs[1]->DV_Data->clear();
+            Inputs[1]->DoNotUseFile = false;
+        }
         LastBadFrame = Frame_Pos - 1;
         Frame_Pos = FirstBadFrame;
         FirstBadFrame = -1;
@@ -1130,15 +1139,15 @@ bool dv_merge_private::Process()
         Merge_Rewind_Pos_Next++;
         if (Merge_Rewind_Pos_Next >= Inputs.size())
             Merge_Rewind_Pos_Next = 0;
+        auto& Input = Inputs[0];
+        auto& Frames = Input->Segments[Segment_Pos].Frames;
+        auto& Frame = Frames[Frame_Pos];
+        TC = Frame.TC;
         Inputs[Merge_Rewind_Pos_Next]->Segments.resize(Inputs[Merge_Rewind_Pos]->Segments.size());
         Inputs[Merge_Rewind_Pos_Next]->Segments[Inputs[Merge_Rewind_Pos_Next]->Segments.size() - 1].Frames.resize(Frame_Pos);
         Merge_Rewind_Pos = Merge_Rewind_Pos_Next;
         if (Verbosity > 5)
             *Log << "Rewind to frame " << Frame_Pos << '\n';
-        auto& Input = Inputs[0];
-        auto& Frames = Input->Segments[Segment_Pos].Frames;
-        auto& Frame = Frames[Frame_Pos];
-        TC = Frame.TC;
         return true;
     }
 
