@@ -530,10 +530,12 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
     }
     if (Merge.SwitchToFile0)
     {
+        /*
         Pass = 0;
         Merge_FilePos = 0;
         Wrapper->File_Pos = 0;
         Merge.SwitchToFile0 = false;
+        */
     }
     if (Pass)
     {
@@ -542,9 +544,16 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
             TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
             if (TC.ToFrames() >= RewindTo_TC_Max.ToFrames())
             {
-                cerr << "Rewind again " << Pass << "\n";
-                RewindToTimeCode(RewindTo_TC_Sav);
-                return;
+                if (Pass < RewindCount)
+                {
+                    cerr << "Rewind again " << Pass << "\n";
+                    RewindToTimeCode(RewindTo_TC_Sav);
+                    return;
+                }
+                Pass = 0;
+                Merge_FilePos = 0;
+                Wrapper->File_Pos = 0;
+                Merge.SwitchToFile0 = false;
             }
         }
     }
