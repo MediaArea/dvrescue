@@ -191,7 +191,7 @@ bool file::TransportControlsSupported()
 void file::RewindToTimeCode(TimeCode TC)
 {
     RewindMode=Rewind_Mode_TimeCode;
-    RewindTo_TC=TC;
+    RewindTo_TC = TC;
     cerr << "DV SetPlaybackMode -1" << flush;
     Controller->SetPlaybackMode(Playback_Mode_Playing, -1.0);
     cerr << " OK\n" << flush;
@@ -256,6 +256,92 @@ void file::AddChange(const MediaInfo_Event_DvDif_Change_0* FrameData)
 //---------------------------------------------------------------------------
 void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 {
+    #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
+    abst_bf AbstBf_Temp(FrameData->AbstBf);
+    timecode TC_Temp(FrameData->TimeCode);
+    auto Seconds = TC_Temp.TimeInSeconds();
+    TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60, Seconds % 60,
+                      TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25,
+                      TC_Temp.DropFrame());
+    if (RewindMode == Rewind_Mode_None && !Wrapper->File_Pos && TC_Temp.HasValue())
+    {
+        TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
+        if (TC.HasValue())
+        {
+            RewindTo_TC_Max = TC;
+        }
+    }
+    if (RewindMode == Rewind_Mode_TimeCode || RewindMode == Forward_Mode_TimeCode)
+    {
+        if (TC_Temp.HasValue())
+        {
+            if (RewindMode == Rewind_Mode_TimeCode)
+            {
+                // Rew
+                if (TC_Temp2.ToFrames() < RewindTo_TC.ToFrames())
+                {
+                    cerr << "MI Frame rew  " << TC_Temp2.ToString() << "\n";
+                    cerr << "DV SetPlaybackMode 1" << flush;
+                    Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
+                    cerr << " OK\n" << flush;
+                    RewindTo_TC_Sav = RewindTo_TC;
+                    RewindMode = Forward_Mode_TimeCode;
+                    return;
+                }
+                else
+                {
+                    cerr << "MI Frame rew  " << TC_Temp2.ToString() << " TC too high\n";
+                    return; //Continue in rewind mode
+                }
+            }
+            else
+            {
+                // ff
+                if (TC_Temp2.ToFrames() >= RewindTo_TC.ToFrames())
+                {
+                    cerr << "MI Frame      " << TC_Temp2.ToString() << "\n";
+                    Wrapper->File_Seek_IsUsed = false;
+                    while (Wrapper->Files.size() <= RewindCount)
+                    {
+                        Wrapper->Files.push_back(new file);
+                        Wrapper->Files[Wrapper->Files.size() - 1]->MI.Option(__T("File_Event_CallBackFunction"), __T("CallBack=memory://") + Ztring::ToZtring((size_t)&Event_CallBackFunction) + __T(";UserHandler=memory://") + Ztring::ToZtring((size_t)this));
+                        Wrapper->Files[Wrapper->Files.size() - 1]->MI.Option(__T("File_DvDif_Analysis"), __T("1"));
+                        Wrapper->Files[Wrapper->Files.size() - 1]->MI.Option(__T("File_Demux_Unpacketize"), __T("1"));
+                        Wrapper->Files[Wrapper->Files.size() - 1]->MI.Option(__T("File_FrameIsAlwaysComplete"), __T("1"));
+                        Wrapper->Files[Wrapper->Files.size() - 1]->MI.Open_Buffer_Init();
+                    }
+                    Wrapper->File_Pos++;
+                    if (Wrapper->File_Pos > RewindCount)
+                        Wrapper->File_Pos = 0;
+                    Merge_FilePos = Wrapper->File_Pos;
+                    Pass = Merge_FilePos ;
+                    Wrapper->Files[Merge_FilePos]->MI.Open_Buffer_Init();
+                    RewindMode = Rewind_Mode_None;
+                    if (Wrapper->Buffer_LastFrame)
+                    {
+                        Merge.AddFrameData(Merge_FilePos, Wrapper->Buffer_LastFrame, 120000);
+                        delete[] Wrapper->Buffer_LastFrame;
+                        Wrapper->Buffer_LastFrame = nullptr;
+                    }
+                }
+                else
+                {
+                    cerr << "MI Frame ff   " << TC_Temp2.ToString() << " TC too low\n";
+                    return; //Continue in rewind mode
+                }
+            }
+        }
+        else
+        {
+            auto Seconds = TC_Temp.TimeInSeconds();
+            TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60, Seconds % 60,
+                TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25,
+                TC_Temp.DropFrame());
+            cerr << "MI Frame      " << TC_Temp2.ToString() << " TC no value\n";
+            return; //Continue in rewind mode
+        }
+    }
+/*
     #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
     abst_bf AbstBf_Temp(FrameData->AbstBf);
     timecode TC_Temp(FrameData->TimeCode);
@@ -381,7 +467,7 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
             cerr << "MI Frame      " << TC_Temp2.ToString() << " TC no value\n";
             return; //Continue in rewind mode
         }
-    }
+    }*/
     #endif
     MediaInfo_Event_DvDif_Analysis_Frame_1* ToPush = new MediaInfo_Event_DvDif_Analysis_Frame_1();
     std::memcpy(ToPush, FrameData, sizeof(MediaInfo_Event_DvDif_Analysis_Frame_1));
@@ -454,15 +540,15 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
         if (TC_Temp.HasValue())
         {
             TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
-            if (TC.ToFrames()>=RewindTo_TC_Max.ToFrames())
+            if (TC.ToFrames() >= RewindTo_TC_Max.ToFrames())
             {
                 cerr << "Rewind again " << Pass << "\n";
                 RewindToTimeCode(RewindTo_TC_Sav);
                 return;
             }
-        }        
+        }
     }
-    #endif
+#endif
 
     // Information
     if (!Merge_FilePos && Verbosity > 0 && Verbosity <= 7)

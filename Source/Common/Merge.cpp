@@ -1151,6 +1151,8 @@ bool dv_merge_private::Process()
             auto& Input = Inputs[i];
             Input->Segments.resize(Inputs[0]->Segments.size());
             Input->Segments.back().Frames.resize(Frame_Pos);
+            if (Frame_Pos)
+                Input->Segments.back().Frames.back() = Inputs.front()->Segments.back().Frames[Frame_Pos - 1];
         }
         if (Verbosity > 5)
             *Log << "Rewind to frame " << Frame_Pos << '\n';

@@ -51,6 +51,8 @@ enum rewind_mode {
     Rewind_Mode_None,
     Rewind_Mode_TimeCode,
     Rewind_Mode_Abst,
+    Forward_Mode_TimeCode,
+    Forward_Mode_Abst,
 };
 #endif
 
