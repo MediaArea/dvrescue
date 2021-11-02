@@ -225,6 +225,17 @@ return_value Parse(Core &C, int argc, const char* argv_ansi[], const MediaInfoNa
             else
                 MergeInfo_OutputFileName = argv_ansi[i];
         }
+        else if (!strcmp(argv_ansi[i], "--rewind"))
+        {
+            if (++i >= argc)
+            {
+                if (C.Err)
+                    *C.Err << "Error: missing value after " << argv_ansi[i - 1] << ".\n";
+                ReturnValue = ReturnValue_ERROR;
+                continue;
+            }
+            RewindCount = atoi(argv_ansi[i]);
+        }
         else if (!strcmp(argv_ansi[i], "--use-abst"))
         {
             if (++i >= argc)

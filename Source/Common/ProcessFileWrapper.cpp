@@ -45,10 +45,7 @@ void FileWrapper::Parse_Buffer(const uint8_t* Buffer, size_t Buffer_Size)
                 ((Buffer[Buffer_Offset + 3 + Pos + 3 + 4] & 0x0F));
 
             TimeCode TC(Hours, Minutes, Seconds, Frames, 30, DropFrame);
-             cerr
-                << "DV           "
-                << " "
-              << TC.ToString()  << "\n";
+            cerr << "DV            " << TC.ToString()  << " ";
             A = 1;
             break;
           }
@@ -60,8 +57,10 @@ void FileWrapper::Parse_Buffer(const uint8_t* Buffer, size_t Buffer_Size)
       break;
   }
 
+    cerr << "DV " << File_Seek_IsUsed << " " << File_Pos << "\n";
     if (File_Seek_IsUsed)
         File_Seek->Parse_Buffer(Buffer, Buffer_Size);
     else
         Files[File_Pos]->Parse_Buffer(Buffer, Buffer_Size);
+    cerr << "DV return\n";
 }

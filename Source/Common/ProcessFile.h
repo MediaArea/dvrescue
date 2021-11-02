@@ -138,5 +138,8 @@ private:
     rewind_mode RewindMode;
     TimeCode RewindTo_TC;
     int RewindTo_Abst;
+    TimeCode RewindTo_TC_Sav;
+    TimeCode RewindTo_TC_Max;
+    int Pass = 0;
     #endif
 };

@@ -49,7 +49,7 @@ void SimulatorWrapper::CreateCaptureSession(const ZenLib::Ztring &FileName, File
         if (Ctl->F[Ctl->Pos]->Read(Buffer, 120000)!=120000)
             break;
         auto SeekPos = Ctl->F[Ctl->Pos]->Position_Get();
-        if (Ctl->Pos && SeekPos >= Ctl->MaxParsed)
+        if (Ctl->Pos && SeekPos >= Ctl->MaxParsed && Ctl->Pos + 1 >= Ctl->F.size())
             Ctl->Pos = 0;
         if (!Ctl->Pos && Ctl->MaxParsed < SeekPos)
             Ctl->MaxParsed = SeekPos;

@@ -302,7 +302,6 @@ namespace
 
         size_t FirstBadFrame = -1;
         size_t LastBadFrame = -1;
-        size_t Merge_Rewind_Pos = -1;
         bool   IsUsingInputSeek = false;
 
     public:
@@ -412,7 +411,6 @@ bool dv_merge_private::Init()
     {
         Inputs.reserve(1 + RewindCount);
         IsUsingInputSeek = true;
-        Merge_Rewind_Pos = 0;
         for (size_t i = 0; i < RewindCount; i++)
         {
           auto Input = new per_file;
@@ -819,7 +817,7 @@ bool dv_merge_private::Process()
             continue;
         auto& Frames = Input->Segments[Segment_Pos].Frames;
         auto& Frame = Frames[Frame_Pos];
-        if (!Frame.Status[Status_FrameMissing] && (!IsUsingInputSeek || FirstBadFrame == -1 || Merge_Rewind_Pos == Inputs.size() - 1))
+        if (!Frame.Status[Status_FrameMissing] && (!IsUsingInputSeek || FirstBadFrame == -1))
         {
             if (Input->F)
             {
@@ -960,7 +958,7 @@ bool dv_merge_private::Process()
                 continue;
             auto& Frames = Input->Segments[Segment_Pos].Frames;
             auto& Frame = Frames[Frame_Pos];
-            if (!Frame.Status[Status_FrameMissing] && (!IsUsingInputSeek || FirstBadFrame == -1 || Merge_Rewind_Pos == Inputs.size() - 1))
+            if (!Frame.Status[Status_FrameMissing] && (!IsUsingInputSeek || FirstBadFrame == -1))
             {
                 if (Input->F)
                 {
@@ -1133,24 +1131,27 @@ bool dv_merge_private::Process()
     {
         if (Inputs.size() > 1)
         {
-            if (Inputs[1]->DV_Data)
-              Inputs[1]->DV_Data->clear();
-            Inputs[1]->DoNotUseFile = false;
+            for (size_t i = 1; i < Inputs.size(); i++)
+            {
+                auto& Input = Inputs[i];
+                if (Input->DV_Data)
+                    Input->DV_Data->clear();
+                Input->DoNotUseFile = false;
+            }
         }
         LastBadFrame = Frame_Pos - 1;
         Frame_Pos = FirstBadFrame;
         FirstBadFrame = -1;
-        auto Merge_Rewind_Pos_Next = Merge_Rewind_Pos;
-        Merge_Rewind_Pos_Next++;
-        if (Merge_Rewind_Pos_Next >= Inputs.size())
-            Merge_Rewind_Pos_Next = 0;
         auto& Input = Inputs[0];
         auto& Frames = Input->Segments[Segment_Pos].Frames;
         auto& Frame = Frames[Frame_Pos];
         TC = Frame.TC;
-        Inputs[Merge_Rewind_Pos_Next]->Segments.resize(Inputs[Merge_Rewind_Pos]->Segments.size());
-        Inputs[Merge_Rewind_Pos_Next]->Segments[Inputs[Merge_Rewind_Pos_Next]->Segments.size() - 1].Frames.resize(Frame_Pos);
-        Merge_Rewind_Pos = Merge_Rewind_Pos_Next;
+        for (size_t i = 1; i < Input_Count; i++)
+        {
+            auto& Input = Inputs[i];
+            Input->Segments.resize(Inputs[0]->Segments.size());
+            Input->Segments.back().Frames.resize(Frame_Pos);
+        }
         if (Verbosity > 5)
             *Log << "Rewind to frame " << Frame_Pos << '\n';
         return true;
@@ -1165,7 +1166,7 @@ bool dv_merge_private::Process()
                 continue;
             auto& Frames = Input->Segments[Segment_Pos].Frames;
             auto& Frame = Frames[Frame_Pos];
-            if (!Frame.Status[Status_FrameMissing] && (!IsUsingInputSeek || FirstBadFrame == -1 || Merge_Rewind_Pos == Inputs.size() - 1))
+            if (!Frame.Status[Status_FrameMissing] && (!IsUsingInputSeek || FirstBadFrame == -1))
             {
                 if (Input->F)
                 {
@@ -1228,7 +1229,7 @@ bool dv_merge_private::Process()
         }
     }
 
-    if (Prefered_Frame != -1 && (!IsUsingInputSeek || FirstBadFrame == -1 || Merge_Rewind_Pos == Inputs.size() - 1)) // Write only if there is some content from this specific frame
+    if (Prefered_Frame != -1 && (!IsUsingInputSeek || FirstBadFrame == -1)) // Write only if there is some content from this specific frame
     {
         fwrite(Output.Buffer, BlockStatus_Count * 80, 1, Output.F);
         fflush(Output.F);
@@ -1243,11 +1244,10 @@ bool dv_merge_private::Process()
 //---------------------------------------------------------------------------
 void dv_merge_private::AddFrameAnalysis(size_t InputPos, const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameData)
 {
-    if (IsUsingInputSeek && Merge_Rewind_Pos != -1 && LastBadFrame != -1)
+    if (IsUsingInputSeek && LastBadFrame != -1)
     {
         if (Frame_Pos > LastBadFrame + 1)
         {
-            Merge_Rewind_Pos = 0;
             FirstBadFrame = -1;
             LastBadFrame = -1;
             const auto Input_Count = Inputs.size();
@@ -1257,7 +1257,6 @@ void dv_merge_private::AddFrameAnalysis(size_t InputPos, const MediaInfo_Event_D
                 Input->DoNotUseFile = true;
             }
         }
-        InputPos = Merge_Rewind_Pos;
     }
 
     // Coherency check
@@ -1281,6 +1280,22 @@ void dv_merge_private::AddFrameAnalysis(size_t InputPos, const MediaInfo_Event_D
     if (Inputs[0]->DV_Data && Inputs[0]->DV_Data->empty())
     {
         SwitchToFile0 = true;
+    }
+    if (0) //IsUsingInputSeek && !SwitchToFile0 && Inputs.back()->Segments.back().Frames.size() >= Inputs.front()->Segments.back().Frames.size())
+    {
+        SwitchToFile0 = true;
+        const auto Input_Count = Inputs.size();
+        auto FillUpTo = Inputs.front()->Segments[Segment_Pos].Frames.size();
+        for (size_t i = 1; i < Input_Count; i++)
+        {
+            auto& Input = Inputs[i];
+            Input->Segments.resize(Inputs[0]->Segments.size());
+            auto& Frames = Input->Segments.back().Frames;
+            while (Frames.size() < FillUpTo)
+                Frames.emplace_back(Status_FrameMissing, TimeCode(), nullptr, FrameData->BlockStatus_Count);
+
+        }
+        while (!Process());
     }
 }
 
@@ -1327,7 +1342,7 @@ bool dv_merge_private::Stats()
     // Stats - Frame count
     if (!Verbosity)
         return false;
-    auto Input_Count = Merge_InputFileNames.size();
+    auto Input_Count = Inputs.size();
     auto Count_Blocks_Total = dv_merge_private::Count_Blocks_Total();
     auto Count_Frames_Total = dv_merge_private::Count_Frames_Total();
     *Log << '\n' << setfill(' ') << setw(Formating_FrameCount_Width) << Count_Frames_Total << " frames in total.\n\n";

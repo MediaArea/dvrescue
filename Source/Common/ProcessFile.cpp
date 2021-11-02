@@ -258,9 +258,17 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
 {
     #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
     abst_bf AbstBf_Temp(FrameData->AbstBf);
+    timecode TC_Temp(FrameData->TimeCode);
+    if (RewindMode==Rewind_Mode_None && !Wrapper->File_Pos && TC_Temp.HasValue())
+    {
+        TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
+        if (TC.HasValue())
+        {
+            RewindTo_TC_Max = TC;
+        }
+    }
     if (RewindMode==Rewind_Mode_TimeCode)
     {
-        timecode TC_Temp(FrameData->TimeCode);
         if (TC_Temp.HasValue())
         {
             TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
@@ -335,11 +343,10 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
     }
     else if (RewindTo_TC.HasValue())
     {
-        timecode TC_Temp(FrameData->TimeCode);
         if (TC_Temp.HasValue())
         {
             TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
-            if (TC.ToFrames()<RewindTo_TC.ToFrames())
+            if (TC.ToFrames()<=RewindTo_TC.ToFrames())
             {
                 auto Seconds = TC_Temp.TimeInSeconds();
                 TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60, Seconds % 60,
@@ -347,6 +354,21 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                                   TC_Temp.DropFrame());
                 cerr << "MI Frame      " << TC_Temp2.ToString() << " TC too low\n";
                 return;
+            }
+            auto Seconds = TC_Temp.TimeInSeconds();
+            TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60,
+                              Seconds % 60, TC_Temp.Frames(),
+                              TC_Temp.DropFrame() ? 30 : 25,
+                              TC_Temp.DropFrame());
+            cerr << "MI Frame      " << TC_Temp2.ToString() << " fine\n";
+            Pass++;
+            if (Pass < RewindCount)
+            {
+                RewindTo_TC_Sav = RewindTo_TC;
+            }
+            else
+            {
+                Pass = 0;
             }
             RewindTo_TC = TimeCode();
         }
@@ -422,9 +444,23 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
     }
     if (Merge.SwitchToFile0)
     {
+        Pass = 0;
         Merge_FilePos = 0;
         Wrapper->File_Pos = 0;
         Merge.SwitchToFile0 = false;
+    }
+    if (Pass)
+    {
+        if (TC_Temp.HasValue())
+        {
+            TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
+            if (TC.ToFrames()>=RewindTo_TC_Max.ToFrames())
+            {
+                cerr << "Rewind again " << Pass << "\n";
+                RewindToTimeCode(RewindTo_TC_Sav);
+                return;
+            }
+        }        
     }
     #endif
 
@@ -436,7 +472,6 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
         Text = to_string(FrameNumber);
         if (Text.size() < Formating_FrameCount_Width)
             Text.insert(0, Formating_FrameCount_Width - Text.size(), ' ');
-        timecode TC_Temp(FrameData->TimeCode);
         if (TC_Temp.HasValue())
         {
             TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
