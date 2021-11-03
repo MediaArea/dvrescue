@@ -7,6 +7,8 @@
 //---------------------------------------------------------------------------
 #include <iomanip>
 #include <iostream>
+#include <chrono>
+#include <thread>
 #include "Common/ProcessFile.h"
 #ifdef ENABLE_AVFCTL
 #include "Common/AvfCtlWrapper.h"
@@ -22,6 +24,13 @@ FileWrapper* Wrapper = nullptr;
 #include "Output.h"
 using namespace ZenLib;
 using namespace std;
+enum step
+{
+    Step_Normal,
+    Step_Rew,
+    Step_Ff,
+};
+static auto Step = Step_Normal;
 //---------------------------------------------------------------------------
 
 //***************************************************************************
@@ -103,14 +112,37 @@ void file::Parse(const String& FileName)
         if (Device<AVFCtlWrapper::GetDeviceCount())
         {
             Wrapper = new FileWrapper(this);
-            MI.Open_Buffer_Init();
-            Controller = new AVFCtlWrapper(Device);
-            Controller->CreateCaptureSession(Wrapper);
-            Controller->StartCaptureSession();
-            Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
-            Controller->WaitForSessionEnd();
-            Controller->StopCaptureSession();
-            MI.Open_Buffer_Finalize();
+            for (;;)
+            {
+                cerr << "New AVFCtlWrapper + FileWrapper, Step=" << (int)Step << " RewindMode=" << (int)RewindMode << "\n" << flush;
+                delete Controller;
+                MI.Open_Buffer_Init();
+                Controller = new AVFCtlWrapper(Device);
+                Controller->CreateCaptureSession(Wrapper);
+                Controller->StartCaptureSession();
+                cerr << "DV SetPlaybackMode Playing 1..." << flush;
+                Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
+                cerr << " DV SetPlaybackMode Playing 1 OK\n" << flush;
+                cerr << "WaitForSessionEnd" << flush;
+                Controller->WaitForSessionEnd();
+                cerr << "WaitForSessionEnd OK\n" << flush;
+                cerr << "StopCaptureSession..." << flush;
+                Controller->StopCaptureSession();
+                cerr << " StopCaptureSession OK\n" << flush;
+                if (Step == Step_Normal)
+                {
+                    cerr << "Open_Buffer_Finalize..." << flush;
+                    MI.Open_Buffer_Finalize();
+                    cerr << " Open_Buffer_Finalize OK\n" << flush;
+                    break;
+                }
+                if (Step == Step_Ff)
+                {
+                    RewindTo_TC_Sav = RewindTo_TC;
+                    RewindMode = Forward_Mode_TimeCode;
+                }
+                Step = Step_Normal;
+            }
         }
     }
     #endif
@@ -118,10 +150,27 @@ void file::Parse(const String& FileName)
     else if (FileName.rfind(__T("simulator://"), 0)==0)
     {
         Wrapper = new FileWrapper(this);
-        MI.Open_Buffer_Init();
-        Controller = new SimulatorWrapper();
-        Controller->CreateCaptureSession(FileName.substr(12), Wrapper);
-        MI.Open_Buffer_Finalize();
+        for (;;)
+        {
+            cerr << "New SimulatorWrapper\n" << flush;
+            delete Controller;
+            MI.Open_Buffer_Init();
+            Controller = new SimulatorWrapper();
+            Controller->CreateCaptureSession(FileName.substr(12), Wrapper);
+            if (Step == Step_Normal)
+            {
+                cerr << "Open_Buffer_Finalize..." << flush;
+                MI.Open_Buffer_Finalize();
+                cerr << " Open_Buffer_Finalize OK\n" << flush;
+                break;
+            }
+            if (Step == Step_Ff)
+            {
+                RewindTo_TC_Sav = RewindTo_TC;
+                RewindMode = Forward_Mode_TimeCode;
+            }
+            Step = Step_Normal;
+        }
     }
     #endif
     else
@@ -192,9 +241,16 @@ void file::RewindToTimeCode(TimeCode TC)
 {
     RewindMode=Rewind_Mode_TimeCode;
     RewindTo_TC = TC;
-    cerr << "DV SetPlaybackMode -1" << flush;
+    Step = Step_Rew;
+    cerr << __DATE__ << " " << __TIME__ << "\n" << flush;
+    cerr << "DV SetPlaybackMode Playing -1..." << flush;
     Controller->SetPlaybackMode(Playback_Mode_Playing, -1.0);
-    cerr << " OK\n" << flush;
+    cerr << " DV SetPlaybackMode Playing -1 OK\n" << flush;
+#if defined(ENABLE_AVFCTL)
+    cerr << "Sleep 5s..." << flush;
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    cerr << " Sleep 5s OK\n" << flush;
+#endif
     Wrapper->File_Seek = new file();
     Wrapper->File_Seek->MI.Option(__T("File_Event_CallBackFunction"), __T("CallBack=memory://") + Ztring::ToZtring((size_t)&Event_CallBackFunction) + __T(";UserHandler=memory://") + Ztring::ToZtring((size_t)this));
     Wrapper->File_Seek->MI.Option(__T("File_DvDif_Analysis"), __T("1"));
@@ -202,6 +258,10 @@ void file::RewindToTimeCode(TimeCode TC)
     Wrapper->File_Seek->MI.Option(__T("File_FrameIsAlwaysComplete"), __T("1"));
     Wrapper->File_Seek->MI.Open_Buffer_Init();
     Wrapper->File_Seek_IsUsed = true;
+
+    cerr << "DV Rewind SetPlaybackMode NotPlaying 0\n" << flush;
+    Controller->SetPlaybackMode(Playback_Mode_NotPlaying, 0);
+    cerr << "DV Rewind SetPlaybackMode NotPlaying 0 OK (after SetPlaybackMode)\n" << flush;
 }
 #endif
 
@@ -280,12 +340,11 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                 // Rew
                 if (TC_Temp2.ToFrames() < RewindTo_TC.ToFrames())
                 {
+                    Step = Step_Ff;
                     cerr << "MI Frame rew  " << TC_Temp2.ToString() << "\n";
-                    cerr << "DV SetPlaybackMode 1" << flush;
-                    Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
-                    cerr << " OK\n" << flush;
-                    RewindTo_TC_Sav = RewindTo_TC;
-                    RewindMode = Forward_Mode_TimeCode;
+                    cerr << "DV ff SetPlaybackMode NotPlaying 0\n" << flush;
+                    Controller->SetPlaybackMode(Playback_Mode_NotPlaying, 0);
+                    cerr << "DV ff SetPlaybackMode NotPlaying 0 OK (after SetPlaybackMode)\n" << flush;
                     return;
                 }
                 else

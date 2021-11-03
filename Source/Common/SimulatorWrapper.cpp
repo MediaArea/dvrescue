@@ -41,6 +41,8 @@ void SimulatorWrapper::CreateCaptureSession(const ZenLib::Ztring &FileName, File
     int8u* Buffer = new int8u[120000];
     for (;;)
     {
+        if (Ctl->Speed == 0)
+            break;
         if (Ctl->Speed < 0)
         {
             Ctl->F[Ctl->Pos]->GoTo(-120000 * 2, File::FromCurrent);
