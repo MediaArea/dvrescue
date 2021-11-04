@@ -86,6 +86,7 @@ file::file()
     #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
     Controller=nullptr;
     RewindMode=Rewind_Mode_None;
+    RewindCount = 2; // TEMP
     #endif
 }
 
@@ -123,7 +124,7 @@ void file::Parse(const String& FileName)
                 cerr << "DV SetPlaybackMode Playing 1..." << flush;
                 Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
                 cerr << " DV SetPlaybackMode Playing 1 OK\n" << flush;
-                cerr << "WaitForSessionEnd" << flush;
+                cerr << "WaitForSessionEnd\n" << flush;
                 Controller->WaitForSessionEnd();
                 cerr << "WaitForSessionEnd OK\n" << flush;
                 cerr << "StopCaptureSession..." << flush;
@@ -152,11 +153,21 @@ void file::Parse(const String& FileName)
         Wrapper = new FileWrapper(this);
         for (;;)
         {
-            cerr << "New SimulatorWrapper\n" << flush;
+            cerr << "New SimulatorWrapper, Step=" << (int)Step << " RewindMode=" << (int)RewindMode << "\n" << flush;
             delete Controller;
             MI.Open_Buffer_Init();
             Controller = new SimulatorWrapper();
             Controller->CreateCaptureSession(FileName.substr(12), Wrapper);
+            Controller->StartCaptureSession();
+            cerr << "DV SetPlaybackMode Playing 1..." << flush;
+            Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
+            cerr << " DV SetPlaybackMode Playing 1 OK\n" << flush;
+            cerr << "WaitForSessionEnd\n" << flush;
+            Controller->WaitForSessionEnd();
+            cerr << "WaitForSessionEnd OK\n" << flush;
+            cerr << "StopCaptureSession..." << flush;
+            Controller->StopCaptureSession();
+            cerr << " StopCaptureSession OK\n" << flush;
             if (Step == Step_Normal)
             {
                 cerr << "Open_Buffer_Finalize..." << flush;
@@ -259,9 +270,11 @@ void file::RewindToTimeCode(TimeCode TC)
     Wrapper->File_Seek->MI.Open_Buffer_Init();
     Wrapper->File_Seek_IsUsed = true;
 
+#if defined(ENABLE_AVFCTL)
     cerr << "DV Rewind SetPlaybackMode NotPlaying 0\n" << flush;
     Controller->SetPlaybackMode(Playback_Mode_NotPlaying, 0);
     cerr << "DV Rewind SetPlaybackMode NotPlaying 0 OK (after SetPlaybackMode)\n" << flush;
+#endif
 }
 #endif
 
@@ -603,6 +616,7 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
             TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
             if (TC.ToFrames() >= RewindTo_TC_Max.ToFrames())
             {
+                cerr << "Pass " << (Pass + 1) << "/" << (RewindCount + 1) << " finished\n" << flush;
                 if (Pass < RewindCount)
                 {
                     cerr << "Rewind again " << Pass << "\n";

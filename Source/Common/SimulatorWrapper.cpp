@@ -7,6 +7,7 @@
 #include "Common/SimulatorWrapper.h"
 #include "ZenLib/File.h"
 #include <vector>
+#include <list>
 #include <iostream> //TEMP
 
 using namespace std;
@@ -15,59 +16,70 @@ using namespace ZenLib;
 struct ctl
 {
     playback_mode Mode = Playback_Mode_Playing;
-    float Speed = 1.0;
+    float Speed = FLT_MAX;
+    list<float> NextSpeed;
+    int NextSpeed_CountDown = 0;
     size_t Pos = 0;
     vector<File*> F;
     size_t MaxParsed = 0;
+    FileWrapper* Wrapper = nullptr;
+    bool Stop = false;
 };
 
 SimulatorWrapper::SimulatorWrapper()
 {
 }
 
+ctl* Ctl = nullptr;
+
 void SimulatorWrapper::CreateCaptureSession(const ZenLib::Ztring &FileName, FileWrapper* Wrapper)
 {
-    auto Ctl = new ctl;
-    Priv = Ctl;
-
-    for(size_t i=0;;i++)
+    if (!Ctl)
     {
-        auto FileNameExt=FileName+__T('.')+Ztring::ToZtring(i);
-        if (!File::Exists(FileNameExt))
-            break;
-        Ctl->F.push_back(new File(FileNameExt));
-    }
+        Ctl = new ctl;
 
-    int8u* Buffer = new int8u[120000];
-    for (;;)
-    {
-        if (Ctl->Speed == 0)
-            break;
-        if (Ctl->Speed < 0)
+        for (size_t i = 0;; i++)
         {
-            Ctl->F[Ctl->Pos]->GoTo(-120000 * 2, File::FromCurrent);
-            Ctl->F[Ctl->Pos]->Position_Get();
+            auto FileNameExt = FileName + __T('.') + Ztring::ToZtring(i);
+            if (!File::Exists(FileNameExt))
+                break;
+            Ctl->F.push_back(new File(FileNameExt));
         }
-        if (Ctl->F[Ctl->Pos]->Read(Buffer, 120000)!=120000)
-            break;
-        auto SeekPos = Ctl->F[Ctl->Pos]->Position_Get();
-        if (Ctl->Pos && SeekPos > Ctl->MaxParsed)
-            Ctl->Pos = 0;
-        if (!Ctl->Pos && Ctl->MaxParsed < SeekPos)
-            Ctl->MaxParsed = SeekPos;
-        Wrapper->Parse_Buffer(Buffer, 120000);
     }
+    Ctl->Wrapper = Wrapper;
 }
 
 SimulatorWrapper::~SimulatorWrapper()
 {
 }
 
+void SimulatorWrapper::StartCaptureSession()
+{
+}
+
+void SimulatorWrapper::StopCaptureSession()
+{
+
+}
+
 void SimulatorWrapper::SetPlaybackMode(playback_mode Mode, float Speed)
 {
-    auto Ctl = (ctl*)Priv;
     Ctl->Mode = Mode;
-    Ctl->Speed = Speed;
+    if (Speed && Ctl->Speed && Ctl->Speed != FLT_MAX)
+    {
+        Ctl->NextSpeed.push_back(Speed);
+        if (!Ctl->NextSpeed_CountDown)
+            Ctl->NextSpeed_CountDown = 2;
+    }
+    else if (!Speed)
+    {
+        Ctl->NextSpeed.push_back(Ctl->Speed);
+        if (!Ctl->NextSpeed_CountDown)
+            Ctl->NextSpeed_CountDown = 2;
+        Ctl->Stop = true;
+    }
+    else
+        Ctl->Speed = Speed;
     if (Speed < 0)
     {
         auto SeekPos = Ctl->F[Ctl->Pos]->Position_Get();
@@ -77,3 +89,46 @@ void SimulatorWrapper::SetPlaybackMode(playback_mode Mode, float Speed)
         Ctl->F[Ctl->Pos]->Position_Get();
     }
 }
+
+void SimulatorWrapper::WaitForSessionEnd()
+{
+    int8u* Buffer = new int8u[120000];
+    for (;;)
+    {
+        if (Ctl->Stop)
+        {
+            Ctl->Stop = false;
+            break;
+        }
+        if (Ctl->NextSpeed_CountDown)
+        {
+            Ctl->NextSpeed_CountDown--;
+            if (!Ctl->NextSpeed_CountDown)
+            {
+                Ctl->Speed = Ctl->NextSpeed.front();
+                Ctl->NextSpeed.pop_front();
+                if (!Ctl->NextSpeed.empty())
+                {
+                    Ctl->NextSpeed_CountDown = 2;
+                }
+            }
+        }
+        if (Ctl->Speed < 0)
+        {
+            Ctl->F[Ctl->Pos]->GoTo(-120000 * 2, File::FromCurrent);
+            Ctl->F[Ctl->Pos]->Position_Get();
+        }
+        if (Ctl->F[Ctl->Pos]->Read(Buffer, 120000) != 120000)
+            break;
+        if (!Ctl->NextSpeed_CountDown)
+        {
+            auto SeekPos = Ctl->F[Ctl->Pos]->Position_Get();
+            if (Ctl->Pos && SeekPos > Ctl->MaxParsed)
+                Ctl->Pos = 0;
+            if (!Ctl->Pos && Ctl->MaxParsed < SeekPos)
+                Ctl->MaxParsed = SeekPos;
+        }
+        Ctl->Wrapper->Parse_Buffer(Buffer, 120000);
+    }
+}
+

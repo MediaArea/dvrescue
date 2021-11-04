@@ -32,8 +32,11 @@ class SimulatorWrapper {
     ~SimulatorWrapper();
 
     // Functions
-    void CreateCaptureSession(const ZenLib::Ztring& FileName, FileWrapper* Wrapper);
     void SetPlaybackMode(playback_mode Mode, float Speed);
+    void CreateCaptureSession(const ZenLib::Ztring& FileName, FileWrapper* Wrapper);
+    void StartCaptureSession();
+    void StopCaptureSession();
+    void WaitForSessionEnd();
 
 private:
     void* Priv;
