@@ -173,27 +173,27 @@ void Thread_Frames::Open(const String& FileName)
 
 void Thread_Frames::operator()()
 {
-    //cerr << "DV CreateCaptureSession\n" << flush;
+    cerr << "DV CreateCaptureSession\n" << flush;
     Controller2->CreateCaptureSession(Wrapper);
-    //cerr << "DV CreateCaptureSession OK\n" << flush;
+    cerr << "DV CreateCaptureSession OK\n" << flush;
 
     bool Parse = true;
     for (;;)
     {
         if (Parse)
         {
-            //cerr << "DV StartCaptureSession\n" << flush;
+            cerr << "DV StartCaptureSession\n" << flush;
             Controller2->StartCaptureSession();
-            //cerr << "DV StartCaptureSession OK\n" << flush;
-            //cerr << "DV SetPlaybackMode Playing 1" << flush;
+            cerr << "DV StartCaptureSession OK\n" << flush;
+            cerr << "DV SetPlaybackMode Playing 1" << flush;
             Controller2->SetPlaybackMode(Playback_Mode_Playing, 1.0);
-            //cerr << " OK\n" << flush;
-            //cerr << "DV WaitForSessionEnd\n" << flush;
+            cerr << " OK\n" << flush;
+            cerr << "DV WaitForSessionEnd\n" << flush;
             Controller2->WaitForSessionEnd();
-            //cerr << "DV WaitForSessionEnd OK\n" << flush;
-            //cerr << "DV StopCaptureSession\n" << flush;
+            cerr << "DV WaitForSessionEnd OK\n" << flush;
+            cerr << "DV StopCaptureSession\n" << flush;
             Controller2->StopCaptureSession();
-            //cerr << "DV StopCaptureSession OK\n" << flush;
+            cerr << "DV StopCaptureSession OK\n" << flush;
             Parse = false; // Once
         }
 
@@ -385,9 +385,9 @@ void file::RewindToTimeCode(TimeCode TC)
     RewindTo_TC = TC;
     Step = Step_Rew;
     cerr << __DATE__ << " " << __TIME__ << "\n" << flush;
-    //cerr << "DV SetPlaybackMode Playing -1..." << flush;
+    cerr << "DV SetPlaybackMode Playing -1..." << flush;
     Controller2->SetPlaybackMode(Playback_Mode_Playing, -1.0);
-    //cerr << " DV SetPlaybackMode Playing -1 OK\n" << flush;
+    cerr << " DV SetPlaybackMode Playing -1 OK\n" << flush;
 
     Wrapper->File_Seek = new file();
     Wrapper->File_Seek->MI.Option(__T("File_Event_CallBackFunction"), __T("CallBack=memory://") + Ztring::ToZtring((size_t)&Event_CallBackFunction) + __T(";UserHandler=memory://") + Ztring::ToZtring((size_t)this));
@@ -475,17 +475,16 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                 if (TC_Temp2.ToFrames() < RewindTo_TC.ToFrames())
                 {
                     Step = Step_Ff;
-                    cerr << "MI Frame rew  " << TC_Temp2.ToString() << "\r";
-                    //cerr << "DV ff SetPlaybackMode NotPlaying 1\n" << flush;
+                    cerr << "MI Frame rew  " << TC_Temp2.ToString() << "\n";
+                    cerr << "DV ff SetPlaybackMode NotPlaying 1\n" << flush;
                     Controller2->SetPlaybackMode(Playback_Mode_Playing, 1.0);
-                    //cerr << "DV ff SetPlaybackMode NotPlaying 1 OK (after SetPlaybackMode)\n" << flush;
+                    cerr << "DV ff SetPlaybackMode NotPlaying 1 OK (after SetPlaybackMode)\n" << flush;
                     RewindMode = Forward_Mode_TimeCode;
                     return;
                 }
                 else
                 {
-                    cerr << "MI Frame rew  " << TC_Temp2.ToString() << "\r";
-                    //cerr << "MI Frame rew  " << TC_Temp2.ToString() << " TC too high\n";
+                    cerr << "MI Frame rew  " << TC_Temp2.ToString() << " TC too high\n";
                     return; //Continue in rewind mode
                 }
             }
@@ -494,7 +493,7 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                 // ff
                 if (TC_Temp2.ToFrames() >= RewindTo_TC.ToFrames())
                 {
-                    cerr << "MI Frame      " << TC_Temp2.ToString() << "\r";
+                    cerr << "MI Frame      " << TC_Temp2.ToString() << "\n";
                     Wrapper->File_Seek_IsUsed = false;
                     while (Wrapper->Files.size() <= RewindCount)
                     {
@@ -521,8 +520,7 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                 }
                 else
                 {
-                    cerr << "MI Frame ff   " << TC_Temp2.ToString() << "`\r";
-                    //cerr << "MI Frame ff   " << TC_Temp2.ToString() << " TC too low\n";
+                    cerr << "MI Frame ff   " << TC_Temp2.ToString() << " TC too low\n";
                     return; //Continue in rewind mode
                 }
             }
@@ -533,8 +531,7 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
             TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60, Seconds % 60,
                 TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25,
                 TC_Temp.DropFrame());
-            cerr << "MI Frame      " << TC_Temp2.ToString() << "\r";
-            //cerr << "MI Frame      " << TC_Temp2.ToString() << " TC no value\n";
+            cerr << "MI Frame      " << TC_Temp2.ToString() << " TC no value\n";
             return; //Continue in rewind mode
         }
     }
@@ -741,11 +738,11 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
             TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
             if (TC.ToFrames() >= RewindTo_TC_Max.ToFrames())
             {
-                cerr << "Pass " << (Pass + 1) << "/" << (RewindCount + 1) << " finished                   \n" << flush;
+                cerr << "Pass " << (Pass + 1) << "/" << (RewindCount + 1) << " finished\n" << flush;
                 if (Pass < RewindCount)
                 {
                     cerr << "Rewind again " << Pass << "\n";
-                    RewindToTimeCode(RewindTo_TC);
+                    RewindToTimeCode(RewindTo_TC_Sav);
                     return;
                 }
                 Pass = 0;
