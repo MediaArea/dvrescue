@@ -9,6 +9,9 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <mutex>
+#include <deque>
+
 #include "Common/ProcessFile.h"
 #ifdef ENABLE_AVFCTL
 #include "Common/AvfCtlWrapper.h"
@@ -86,9 +89,176 @@ file::file()
     #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
     Controller=nullptr;
     RewindMode=Rewind_Mode_None;
-    RewindCount = 2; // TEMP
     #endif
 }
+
+struct buffer
+{
+    uint8_t* Buffer = nullptr;
+    size_t Buffer_Size = 0;
+};
+
+class Common
+{
+public:
+    void Write(int Value)
+    {
+        lock_guard<mutex> guard(Mutex);
+        Internal = Value;
+    }
+
+    int Read()
+    {
+        lock_guard<mutex> guard(Mutex);
+        return Internal;
+    }
+
+    void Push(const uint8_t* Buffer, size_t Buffer_Size)
+    {
+        lock_guard<mutex> guard(Mutex_List);
+        buffer Buf;
+        Buf.Buffer = new uint8_t[Buffer_Size];
+        memcpy(Buf.Buffer, Buffer, Buffer_Size);
+        Buf.Buffer_Size = Buffer_Size;
+        List.push_back(Buf);
+    }
+
+    buffer Front()
+    {
+        lock_guard<mutex> guard(Mutex_List);
+        if (List.empty())
+            return buffer();
+        return List.front();
+    }
+
+    void Pop()
+    {
+        lock_guard<mutex> guard(Mutex_List);
+        delete[] List.front().Buffer;
+        List.pop_front();
+    }
+
+private:
+    mutex Mutex;
+    mutex Mutex_List;
+    int Internal = 0;
+    deque<buffer> List;
+};
+Common Co;
+#ifdef ENABLE_AVFCTL
+AVFCtlWrapper* Controller2;
+#endif
+#ifdef ENABLE_SIMULATOR
+SimulatorWrapper* Controller2 = nullptr;
+#endif
+
+Thread_Frames::Thread_Frames()
+{
+}
+
+void Thread_Frames::Open(const String& FileName)
+{
+#ifdef ENABLE_AVFCTL
+    Ztring ZFileName(FileName);
+    size_t Device = (size_t)ZFileName.SubString(__T("device://"), __T("")).To_int64u();
+    cerr << "New AVFCtlWrapper + FileWrapper, Device=" << Device << "\n" << flush;
+    Controller2 = new AVFCtlWrapper(Device);
+#endif
+#ifdef ENABLE_SIMULATOR
+    cerr << "New simulator\n" << flush;
+    Controller2 = new SimulatorWrapper(FileName.substr(12));
+#endif
+    Wrapper = new FileWrapper(this);
+}
+
+void Thread_Frames::operator()()
+{
+    //cerr << "DV CreateCaptureSession\n" << flush;
+    Controller2->CreateCaptureSession(Wrapper);
+    //cerr << "DV CreateCaptureSession OK\n" << flush;
+
+    bool Parse = true;
+    for (;;)
+    {
+        if (Parse)
+        {
+            //cerr << "DV StartCaptureSession\n" << flush;
+            Controller2->StartCaptureSession();
+            //cerr << "DV StartCaptureSession OK\n" << flush;
+            //cerr << "DV SetPlaybackMode Playing 1" << flush;
+            Controller2->SetPlaybackMode(Playback_Mode_Playing, 1.0);
+            //cerr << " OK\n" << flush;
+            //cerr << "DV WaitForSessionEnd\n" << flush;
+            Controller2->WaitForSessionEnd();
+            //cerr << "DV WaitForSessionEnd OK\n" << flush;
+            //cerr << "DV StopCaptureSession\n" << flush;
+            Controller2->StopCaptureSession();
+            //cerr << "DV StopCaptureSession OK\n" << flush;
+            Parse = false; // Once
+        }
+
+        switch (Co.Read())
+        {
+        case 0: // No order
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            //this_thread::yield();
+            break;
+        case 1: // Quit
+            return;
+        case 2: // Again
+            Parse = true;
+        }
+    }
+}
+
+void Thread_Frames::Parse_Buffer(const uint8_t* Buffer, size_t Buffer_Size)
+{
+    /*
+    TimeCode TC;
+    for (size_t Buffer_Offset = 0; Buffer_Offset < Buffer_Size; Buffer_Offset += 80) {
+        int A = 0;
+
+        switch (Buffer[Buffer_Offset] & 0xE0) {
+        case 0x20:
+            for (size_t Pos = 0; Pos < 48; Pos += 8) {
+                auto PackType = Buffer[Buffer_Offset + 3 + Pos + 3];
+
+                // dv_timecode
+                if (PackType == 0x13)  // Pack type=0x13 (dv_timecode)
+                {
+                    bool DropFrame =
+                        (Buffer[Buffer_Offset + 3 + Pos + 3 + 1] & 0x40) ? true : false;
+                    auto Frames =
+                        ((Buffer[Buffer_Offset + 3 + Pos + 3 + 1] & 0x30) >> 4) * 10 +
+                        ((Buffer[Buffer_Offset + 3 + Pos + 3 + 1] & 0x0F));
+                    auto Seconds =
+                        ((Buffer[Buffer_Offset + 3 + Pos + 3 + 2] & 0x70) >> 4) * 10 +
+                        ((Buffer[Buffer_Offset + 3 + Pos + 3 + 2] & 0x0F));
+                    auto Minutes =
+                        ((Buffer[Buffer_Offset + 3 + Pos + 3 + 3] & 0x70) >> 4) * 10 +
+                        ((Buffer[Buffer_Offset + 3 + Pos + 3 + 3] & 0x0F));
+                    auto Hours =
+                        ((Buffer[Buffer_Offset + 3 + Pos + 3 + 4] & 0x30) >> 4) * 10 +
+                        ((Buffer[Buffer_Offset + 3 + Pos + 3 + 4] & 0x0F));
+
+                    TC = TimeCode(Hours, Minutes, Seconds, Frames, 30, DropFrame);
+                    A = 1;
+                    break;
+                }
+            }
+            if (A)
+                break;
+        }
+        if (A)
+            break;
+    }
+
+    cerr << "Frame " << TC.ToString() << '\r' << flush;
+    */
+    Co.Push(Buffer, Buffer_Size);
+}
+
+Thread_Frames Th_Frames;
 
 //---------------------------------------------------------------------------
 void file::Parse(const String& FileName)
@@ -108,80 +278,41 @@ void file::Parse(const String& FileName)
     #ifdef ENABLE_AVFCTL
     else if (FileName.rfind(__T("device://"), 0)==0)
     {
-        Ztring ZFileName(FileName);
-        size_t Device=(size_t)ZFileName.SubString(__T("device://"), __T("")).To_int64u();
-        if (Device<AVFCtlWrapper::GetDeviceCount())
+        Th_Frames.Open(FileName);
+        MI.Open_Buffer_Init();
+        thread thread1(Th_Frames);
+        for (;;)
         {
-            Wrapper = new FileWrapper(this);
-            for (;;)
+            auto Buffer = Co.Front();
+            if (Buffer.Buffer)
             {
-                cerr << "New AVFCtlWrapper + FileWrapper, Step=" << (int)Step << " RewindMode=" << (int)RewindMode << "\n" << flush;
-                delete Controller;
-                MI.Open_Buffer_Init();
-                Controller = new AVFCtlWrapper(Device);
-                Controller->CreateCaptureSession(Wrapper);
-                Controller->StartCaptureSession();
-                cerr << "DV SetPlaybackMode Playing 1..." << flush;
-                Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
-                cerr << " DV SetPlaybackMode Playing 1 OK\n" << flush;
-                cerr << "WaitForSessionEnd\n" << flush;
-                Controller->WaitForSessionEnd();
-                cerr << "WaitForSessionEnd OK\n" << flush;
-                cerr << "StopCaptureSession..." << flush;
-                Controller->StopCaptureSession();
-                cerr << " StopCaptureSession OK\n" << flush;
-                if (Step == Step_Normal)
-                {
-                    cerr << "Open_Buffer_Finalize..." << flush;
-                    MI.Open_Buffer_Finalize();
-                    cerr << " Open_Buffer_Finalize OK\n" << flush;
-                    break;
-                }
-                if (Step == Step_Ff)
-                {
-                    RewindTo_TC_Sav = RewindTo_TC;
-                    RewindMode = Forward_Mode_TimeCode;
-                }
-                Step = Step_Normal;
+                Parse_Buffer(Buffer.Buffer, Buffer.Buffer_Size);
+                Co.Pop();
             }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
+        thread1.join();
+        MI.Open_Buffer_Finalize();
     }
     #endif
     #ifdef ENABLE_SIMULATOR
     else if (FileName.rfind(__T("simulator://"), 0)==0)
     {
-        Wrapper = new FileWrapper(this);
+        Th_Frames.Open(FileName);
+        MI.Open_Buffer_Init();
+        thread thread1(Th_Frames);
         for (;;)
         {
-            cerr << "New SimulatorWrapper, Step=" << (int)Step << " RewindMode=" << (int)RewindMode << "\n" << flush;
-            delete Controller;
-            MI.Open_Buffer_Init();
-            Controller = new SimulatorWrapper();
-            Controller->CreateCaptureSession(FileName.substr(12), Wrapper);
-            Controller->StartCaptureSession();
-            cerr << "DV SetPlaybackMode Playing 1..." << flush;
-            Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
-            cerr << " DV SetPlaybackMode Playing 1 OK\n" << flush;
-            cerr << "WaitForSessionEnd\n" << flush;
-            Controller->WaitForSessionEnd();
-            cerr << "WaitForSessionEnd OK\n" << flush;
-            cerr << "StopCaptureSession..." << flush;
-            Controller->StopCaptureSession();
-            cerr << " StopCaptureSession OK\n" << flush;
-            if (Step == Step_Normal)
+            auto Buffer = Co.Front();
+            if (Buffer.Buffer)
             {
-                cerr << "Open_Buffer_Finalize..." << flush;
-                MI.Open_Buffer_Finalize();
-                cerr << " Open_Buffer_Finalize OK\n" << flush;
-                break;
+                Parse_Buffer(Buffer.Buffer, Buffer.Buffer_Size);
+                Co.Pop();
             }
-            if (Step == Step_Ff)
-            {
-                RewindTo_TC_Sav = RewindTo_TC;
-                RewindMode = Forward_Mode_TimeCode;
-            }
-            Step = Step_Normal;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
+        thread1.join();
+        MI.Open_Buffer_Finalize();
     }
     #endif
     else
@@ -250,18 +381,14 @@ bool file::TransportControlsSupported()
 #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
 void file::RewindToTimeCode(TimeCode TC)
 {
-    RewindMode=Rewind_Mode_TimeCode;
+    RewindMode = Rewind_Mode_TimeCode;
     RewindTo_TC = TC;
     Step = Step_Rew;
     cerr << __DATE__ << " " << __TIME__ << "\n" << flush;
-    cerr << "DV SetPlaybackMode Playing -1..." << flush;
-    Controller->SetPlaybackMode(Playback_Mode_Playing, -1.0);
-    cerr << " DV SetPlaybackMode Playing -1 OK\n" << flush;
-#if defined(ENABLE_AVFCTL)
-    cerr << "Sleep 5s..." << flush;
-    std::this_thread::sleep_for(std::chrono::seconds(5));
-    cerr << " Sleep 5s OK\n" << flush;
-#endif
+    //cerr << "DV SetPlaybackMode Playing -1..." << flush;
+    Controller2->SetPlaybackMode(Playback_Mode_Playing, -1.0);
+    //cerr << " DV SetPlaybackMode Playing -1 OK\n" << flush;
+
     Wrapper->File_Seek = new file();
     Wrapper->File_Seek->MI.Option(__T("File_Event_CallBackFunction"), __T("CallBack=memory://") + Ztring::ToZtring((size_t)&Event_CallBackFunction) + __T(";UserHandler=memory://") + Ztring::ToZtring((size_t)this));
     Wrapper->File_Seek->MI.Option(__T("File_DvDif_Analysis"), __T("1"));
@@ -269,12 +396,6 @@ void file::RewindToTimeCode(TimeCode TC)
     Wrapper->File_Seek->MI.Option(__T("File_FrameIsAlwaysComplete"), __T("1"));
     Wrapper->File_Seek->MI.Open_Buffer_Init();
     Wrapper->File_Seek_IsUsed = true;
-
-#if defined(ENABLE_AVFCTL)
-    cerr << "DV Rewind SetPlaybackMode NotPlaying 0\n" << flush;
-    Controller->SetPlaybackMode(Playback_Mode_NotPlaying, 0);
-    cerr << "DV Rewind SetPlaybackMode NotPlaying 0 OK (after SetPlaybackMode)\n" << flush;
-#endif
 }
 #endif
 
@@ -354,15 +475,17 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                 if (TC_Temp2.ToFrames() < RewindTo_TC.ToFrames())
                 {
                     Step = Step_Ff;
-                    cerr << "MI Frame rew  " << TC_Temp2.ToString() << "\n";
-                    cerr << "DV ff SetPlaybackMode NotPlaying 0\n" << flush;
-                    Controller->SetPlaybackMode(Playback_Mode_NotPlaying, 0);
-                    cerr << "DV ff SetPlaybackMode NotPlaying 0 OK (after SetPlaybackMode)\n" << flush;
+                    cerr << "MI Frame rew  " << TC_Temp2.ToString() << "\r";
+                    //cerr << "DV ff SetPlaybackMode NotPlaying 1\n" << flush;
+                    Controller2->SetPlaybackMode(Playback_Mode_Playing, 1.0);
+                    //cerr << "DV ff SetPlaybackMode NotPlaying 1 OK (after SetPlaybackMode)\n" << flush;
+                    RewindMode = Forward_Mode_TimeCode;
                     return;
                 }
                 else
                 {
-                    cerr << "MI Frame rew  " << TC_Temp2.ToString() << " TC too high\n";
+                    cerr << "MI Frame rew  " << TC_Temp2.ToString() << "\r";
+                    //cerr << "MI Frame rew  " << TC_Temp2.ToString() << " TC too high\n";
                     return; //Continue in rewind mode
                 }
             }
@@ -371,7 +494,7 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                 // ff
                 if (TC_Temp2.ToFrames() >= RewindTo_TC.ToFrames())
                 {
-                    cerr << "MI Frame      " << TC_Temp2.ToString() << "\n";
+                    cerr << "MI Frame      " << TC_Temp2.ToString() << "\r";
                     Wrapper->File_Seek_IsUsed = false;
                     while (Wrapper->Files.size() <= RewindCount)
                     {
@@ -398,7 +521,8 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                 }
                 else
                 {
-                    cerr << "MI Frame ff   " << TC_Temp2.ToString() << " TC too low\n";
+                    cerr << "MI Frame ff   " << TC_Temp2.ToString() << "`\r";
+                    //cerr << "MI Frame ff   " << TC_Temp2.ToString() << " TC too low\n";
                     return; //Continue in rewind mode
                 }
             }
@@ -409,7 +533,8 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
             TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60, Seconds % 60,
                 TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25,
                 TC_Temp.DropFrame());
-            cerr << "MI Frame      " << TC_Temp2.ToString() << " TC no value\n";
+            cerr << "MI Frame      " << TC_Temp2.ToString() << "\r";
+            //cerr << "MI Frame      " << TC_Temp2.ToString() << " TC no value\n";
             return; //Continue in rewind mode
         }
     }
@@ -616,11 +741,11 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
             TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
             if (TC.ToFrames() >= RewindTo_TC_Max.ToFrames())
             {
-                cerr << "Pass " << (Pass + 1) << "/" << (RewindCount + 1) << " finished\n" << flush;
+                cerr << "Pass " << (Pass + 1) << "/" << (RewindCount + 1) << " finished                   \n" << flush;
                 if (Pass < RewindCount)
                 {
                     cerr << "Rewind again " << Pass << "\n";
-                    RewindToTimeCode(RewindTo_TC_Sav);
+                    RewindToTimeCode(RewindTo_TC);
                     return;
                 }
                 Pass = 0;

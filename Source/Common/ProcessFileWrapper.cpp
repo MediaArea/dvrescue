@@ -58,7 +58,9 @@ void FileWrapper::Parse_Buffer(const uint8_t* Buffer, size_t Buffer_Size)
   }
 
     //cerr << "DV " << File_Seek_IsUsed << " " << File_Pos << "\n";
-    if (File_Seek_IsUsed)
+    if (Th)
+        Th->Parse_Buffer(Buffer, Buffer_Size);
+    else if (File_Seek_IsUsed)
         File_Seek->Parse_Buffer(Buffer, Buffer_Size);
     else
         Files[File_Pos]->Parse_Buffer(Buffer, Buffer_Size);

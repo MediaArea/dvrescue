@@ -28,14 +28,14 @@ enum playback_mode {
 class SimulatorWrapper {
  public:
     // Constructor/Destructor
-    SimulatorWrapper();
+    SimulatorWrapper(const ZenLib::Ztring& FileName);
     ~SimulatorWrapper();
 
     // Functions
-    void SetPlaybackMode(playback_mode Mode, float Speed);
-    void CreateCaptureSession(const ZenLib::Ztring& FileName, FileWrapper* Wrapper);
+    void CreateCaptureSession(FileWrapper* Wrapper);
     void StartCaptureSession();
     void StopCaptureSession();
+    void SetPlaybackMode(playback_mode Mode, float Speed);
     void WaitForSessionEnd();
 
 private:
