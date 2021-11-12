@@ -33,7 +33,7 @@ static ostream* Log;
 string MergeInfo_OutputFileName;
 uint8_t Verbosity = 5;
 uint8_t UseAbst = 0;
-size_t RewindCount = 2;
+size_t RewindCount = 1;
 //---------------------------------------------------------------------------
 
 namespace

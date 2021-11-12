@@ -89,7 +89,7 @@ file::file()
     #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
     Controller=nullptr;
     RewindMode=Rewind_Mode_None;
-    #endif
+#endif
 }
 
 struct buffer
@@ -173,27 +173,27 @@ void Thread_Frames::Open(const String& FileName)
 
 void Thread_Frames::operator()()
 {
-    cerr << "DV CreateCaptureSession\n" << flush;
+    //cerr << "DV CreateCaptureSession\n" << flush;
     Controller2->CreateCaptureSession(Wrapper);
-    cerr << "DV CreateCaptureSession OK\n" << flush;
+    //cerr << "DV CreateCaptureSession OK\n" << flush;
 
     bool Parse = true;
     for (;;)
     {
         if (Parse)
         {
-            cerr << "DV StartCaptureSession\n" << flush;
+            //cerr << "DV StartCaptureSession\n" << flush;
             Controller2->StartCaptureSession();
-            cerr << "DV StartCaptureSession OK\n" << flush;
-            cerr << "DV SetPlaybackMode Playing 1" << flush;
+            //cerr << "DV StartCaptureSession OK\n" << flush;
+            //cerr << "DV SetPlaybackMode Playing 1" << flush;
             Controller2->SetPlaybackMode(Playback_Mode_Playing, 1.0);
-            cerr << " OK\n" << flush;
-            cerr << "DV WaitForSessionEnd\n" << flush;
+            //cerr << " OK\n" << flush;
+            //cerr << "DV WaitForSessionEnd\n" << flush;
             Controller2->WaitForSessionEnd();
-            cerr << "DV WaitForSessionEnd OK\n" << flush;
-            cerr << "DV StopCaptureSession\n" << flush;
+            //cerr << "DV WaitForSessionEnd OK\n" << flush;
+            //cerr << "DV StopCaptureSession\n" << flush;
             Controller2->StopCaptureSession();
-            cerr << "DV StopCaptureSession OK\n" << flush;
+            //cerr << "DV StopCaptureSession OK\n" << flush;
             Parse = false; // Once
         }
 
@@ -384,10 +384,10 @@ void file::RewindToTimeCode(TimeCode TC)
     RewindMode = Rewind_Mode_TimeCode;
     RewindTo_TC = TC;
     Step = Step_Rew;
-    cerr << __DATE__ << " " << __TIME__ << "\n" << flush;
-    cerr << "DV SetPlaybackMode Playing -1..." << flush;
+    //cerr << __DATE__ << " " << __TIME__ << "\n" << flush;
+    //cerr << "DV SetPlaybackMode Playing -1..." << flush;
     Controller2->SetPlaybackMode(Playback_Mode_Playing, -1.0);
-    cerr << " DV SetPlaybackMode Playing -1 OK\n" << flush;
+    //cerr << " DV SetPlaybackMode Playing -1 OK\n" << flush;
 
     Wrapper->File_Seek = new file();
     Wrapper->File_Seek->MI.Option(__T("File_Event_CallBackFunction"), __T("CallBack=memory://") + Ztring::ToZtring((size_t)&Event_CallBackFunction) + __T(";UserHandler=memory://") + Ztring::ToZtring((size_t)this));
@@ -475,16 +475,19 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                 if (TC_Temp2.ToFrames() < RewindTo_TC.ToFrames())
                 {
                     Step = Step_Ff;
-                    cerr << "MI Frame rew  " << TC_Temp2.ToString() << "\n";
-                    cerr << "DV ff SetPlaybackMode NotPlaying 1\n" << flush;
+                    cerr << "Pass " << (Pass + 1) << '/' << (RewindCount + 1) << ", rew " << TC_Temp2.ToString() << "\r";
+                    //cerr << "MI Frame rew  " << TC_Temp2.ToString() << "\r";
+                    //cerr << "DV ff SetPlaybackMode NotPlaying 1\n" << flush;
                     Controller2->SetPlaybackMode(Playback_Mode_Playing, 1.0);
-                    cerr << "DV ff SetPlaybackMode NotPlaying 1 OK (after SetPlaybackMode)\n" << flush;
+                    //cerr << "DV ff SetPlaybackMode NotPlaying 1 OK (after SetPlaybackMode)\n" << flush;
                     RewindMode = Forward_Mode_TimeCode;
                     return;
                 }
                 else
                 {
-                    cerr << "MI Frame rew  " << TC_Temp2.ToString() << " TC too high\n";
+                    cerr << "Pass " << (Pass + 1) << '/' << (RewindCount + 1) << ", rew " << TC_Temp2.ToString() << "\r";
+                    //cerr << "MI Frame rew  " << TC_Temp2.ToString() << "\r";
+                    //cerr << "MI Frame rew  " << TC_Temp2.ToString() << " TC too high\n";
                     return; //Continue in rewind mode
                 }
             }
@@ -493,7 +496,8 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                 // ff
                 if (TC_Temp2.ToFrames() >= RewindTo_TC.ToFrames())
                 {
-                    cerr << "MI Frame      " << TC_Temp2.ToString() << "\n";
+                    cerr << "Pass " << (Pass + 1) << '/' << (RewindCount + 1) << ",      " << TC_Temp2.ToString() << "\r";
+                    //cerr << "MI Frame      " << TC_Temp2.ToString() << "\r";
                     Wrapper->File_Seek_IsUsed = false;
                     while (Wrapper->Files.size() <= RewindCount)
                     {
@@ -520,7 +524,9 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
                 }
                 else
                 {
-                    cerr << "MI Frame ff   " << TC_Temp2.ToString() << " TC too low\n";
+                    cerr << "Pass " << (Pass + 1) << '/' << (RewindCount + 1) << ", for " << TC_Temp2.ToString() << "\r";
+                    //cerr << "MI Frame ff   " << TC_Temp2.ToString() << "`\r";
+                    //cerr << "MI Frame ff   " << TC_Temp2.ToString() << " TC too low\n";
                     return; //Continue in rewind mode
                 }
             }
@@ -531,137 +537,12 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
             TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60, Seconds % 60,
                 TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25,
                 TC_Temp.DropFrame());
-            cerr << "MI Frame      " << TC_Temp2.ToString() << " TC no value\n";
+            cerr << "Pass " << (Pass + 1) << '/' << (RewindCount + 1) << ",     " << TC_Temp2.ToString() << "\r";
+            //cerr << "MI Frame      " << TC_Temp2.ToString() << "\r";
+            //cerr << "MI Frame      " << TC_Temp2.ToString() << " TC no value\n";
             return; //Continue in rewind mode
         }
     }
-/*
-    #if defined(ENABLE_AVFCTL) || defined(ENABLE_SIMULATOR)
-    abst_bf AbstBf_Temp(FrameData->AbstBf);
-    timecode TC_Temp(FrameData->TimeCode);
-    if (RewindMode==Rewind_Mode_None && !Wrapper->File_Pos && TC_Temp.HasValue())
-    {
-        TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
-        if (TC.HasValue())
-        {
-            RewindTo_TC_Max = TC;
-        }
-    }
-    if (RewindMode==Rewind_Mode_TimeCode)
-    {
-        if (TC_Temp.HasValue())
-        {
-            TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
-            if (TC.ToFrames()<=RewindTo_TC.ToFrames())
-            {
-                auto Seconds = TC_Temp.TimeInSeconds();
-                TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60, Seconds % 60,
-                                  TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25,
-                                  TC_Temp.DropFrame());
-                cerr << "MI Frame rew  " << TC_Temp2.ToString() << " Playing again\n";
-                RewindMode=Rewind_Mode_None;
-                cerr << "DV SetPlaybackMode 1" << flush;
-                Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
-                cerr << " OK\n" << flush;
-                Wrapper->File_Seek_IsUsed = false;
-                while (Wrapper->Files.size() <= RewindCount)
-                {
-                    Wrapper->Files.push_back(new file);
-                    Wrapper->Files[Wrapper->Files.size()-1]->MI.Option(__T("File_Event_CallBackFunction"), __T("CallBack=memory://") + Ztring::ToZtring((size_t)&Event_CallBackFunction) + __T(";UserHandler=memory://") + Ztring::ToZtring((size_t)this));
-                    Wrapper->Files[Wrapper->Files.size()-1]->MI.Option(__T("File_DvDif_Analysis"), __T("1"));
-                    Wrapper->Files[Wrapper->Files.size()-1]->MI.Option(__T("File_Demux_Unpacketize"), __T("1"));
-                    Wrapper->Files[Wrapper->Files.size()-1]->MI.Option(__T("File_FrameIsAlwaysComplete"), __T("1"));
-                    Wrapper->Files[Wrapper->Files.size()-1]->MI.Open_Buffer_Init();
-                }
-                Wrapper->File_Pos++;
-                if (Wrapper->File_Pos > RewindCount)
-                    Wrapper->File_Pos = 0;
-                Merge_FilePos = Wrapper->File_Pos;
-                Wrapper->Files[Merge_FilePos]->MI.Open_Buffer_Init();
-                if (Wrapper->Buffer_LastFrame)
-                {
-                    Merge.AddFrameData(Merge_FilePos, Wrapper->Buffer_LastFrame, 120000);
-                    delete[] Wrapper->Buffer_LastFrame;
-                    Wrapper->Buffer_LastFrame = nullptr;
-                }
-            }
-            else
-            {
-                auto Seconds = TC_Temp.TimeInSeconds();
-                TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60, Seconds % 60,
-                                  TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25,
-                                  TC_Temp.DropFrame());
-                cerr << "MI Frame rew  " << TC_Temp2.ToString() << " TC too high\n";
-                return; //Continue in rewind mode
-            }
-        }
-        else
-        {
-            auto Seconds = TC_Temp.TimeInSeconds();
-            TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60, Seconds % 60,
-                              TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25,
-                              TC_Temp.DropFrame());
-            cerr << "MI Frame rew  " << TC_Temp2.ToString() << " TC no value\n";
-            return; //Continue in rewind mode
-        }
-    }
-    else if (RewindMode==Rewind_Mode_Abst)
-    {
-        abst_bf AbstBf_Temp(FrameData->AbstBf);
-        if (AbstBf_Temp.HasAbsoluteTrackNumberValue())
-        {
-            if (AbstBf_Temp.AbsoluteTrackNumber()<=RewindTo_Abst)
-            {
-                RewindMode=Rewind_Mode_None;
-                Controller->SetPlaybackMode(Playback_Mode_Playing, 1.0);
-            }
-            else
-                return; //Continue in rewind mode
-        }
-        else
-            return; //Continue in rewind mode
-    }
-    else if (RewindTo_TC.HasValue())
-    {
-        if (TC_Temp.HasValue())
-        {
-            TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
-            if (TC.ToFrames()<=RewindTo_TC.ToFrames())
-            {
-                auto Seconds = TC_Temp.TimeInSeconds();
-                TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60, Seconds % 60,
-                                  TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25,
-                                  TC_Temp.DropFrame());
-                cerr << "MI Frame      " << TC_Temp2.ToString() << " TC too low\n";
-                return;
-            }
-            auto Seconds = TC_Temp.TimeInSeconds();
-            TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60,
-                              Seconds % 60, TC_Temp.Frames(),
-                              TC_Temp.DropFrame() ? 30 : 25,
-                              TC_Temp.DropFrame());
-            cerr << "MI Frame      " << TC_Temp2.ToString() << " fine\n";
-            Pass++;
-            if (Pass < RewindCount)
-            {
-                RewindTo_TC_Sav = RewindTo_TC;
-            }
-            else
-            {
-                Pass = 0;
-            }
-            RewindTo_TC = TimeCode();
-        }
-        else
-        {
-            auto Seconds = TC_Temp.TimeInSeconds();
-            TimeCode TC_Temp2(Seconds / 3600, (Seconds % 3600) / 60, Seconds % 60,
-                              TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25,
-                              TC_Temp.DropFrame());
-            cerr << "MI Frame      " << TC_Temp2.ToString() << " TC no value\n";
-            return; //Continue in rewind mode
-        }
-    }*/
     #endif
     MediaInfo_Event_DvDif_Analysis_Frame_1* ToPush = new MediaInfo_Event_DvDif_Analysis_Frame_1();
     std::memcpy(ToPush, FrameData, sizeof(MediaInfo_Event_DvDif_Analysis_Frame_1));
@@ -724,12 +605,10 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
     }
     if (Merge.SwitchToFile0)
     {
-        /*
         Pass = 0;
         Merge_FilePos = 0;
         Wrapper->File_Pos = 0;
         Merge.SwitchToFile0 = false;
-        */
     }
     if (Pass)
     {
@@ -738,13 +617,15 @@ void file::AddFrameAnalysis(const MediaInfo_Event_DvDif_Analysis_Frame_1* FrameD
             TimeCode TC(TC_Temp.TimeInSeconds() / 3600, (TC_Temp.TimeInSeconds() / 60) % 60, TC_Temp.TimeInSeconds() % 60, TC_Temp.Frames(), TC_Temp.DropFrame() ? 30 : 25, TC_Temp.DropFrame());
             if (TC.ToFrames() >= RewindTo_TC_Max.ToFrames())
             {
-                cerr << "Pass " << (Pass + 1) << "/" << (RewindCount + 1) << " finished\n" << flush;
+                cerr << "Pass " << (Pass + 1) << "/" << (RewindCount + 1) << " finished                         \r" << flush;
+                //cerr << "Pass " << (Pass + 1) << "/" << (RewindCount + 1) << " finished                   \n" << flush;
                 if (Pass < RewindCount)
                 {
-                    cerr << "Rewind again " << Pass << "\n";
-                    RewindToTimeCode(RewindTo_TC_Sav);
+                    cerr << "Rewind again " << Pass << "\r";
+                    RewindToTimeCode(RewindTo_TC);
                     return;
                 }
+                cerr << "                                                                 \r";
                 Pass = 0;
                 Merge_FilePos = 0;
                 Wrapper->File_Pos = 0;

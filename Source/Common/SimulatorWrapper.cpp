@@ -97,7 +97,7 @@ void SimulatorWrapper::WaitForSessionEnd()
         Ctl->Wrapper->Parse_Buffer(Buffer, 120000);
         if (Ctl->Speed < 0 && Ctl->F[Ctl->Pos]->Position_Get() == 120000)
             break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(33));
+        std::this_thread::sleep_for(std::chrono::milliseconds(333));
     }
     delete[] Buffer;
 }
