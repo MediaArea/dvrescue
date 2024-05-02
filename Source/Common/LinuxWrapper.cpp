@@ -543,7 +543,7 @@ void LinuxWrapper::SetPlaybackMode(playback_mode Mode, float Speed)
     {
         case Playback_Mode_Playing:
         {
-            uint8_t Code;
+            uint8_t Code = 0;
             if (Speed >= 2.0f) // fastest play mode
                 Code=AVC1394_VCR_OPERAND_PLAY_FASTEST_FORWARD;
             else if (Speed > 1.0f) // 2x play
@@ -570,7 +570,7 @@ void LinuxWrapper::SetPlaybackMode(playback_mode Mode, float Speed)
         }
         case Playback_Mode_NotPlaying:
         {
-            uint8_t Code;
+            uint8_t Code = 0;
             if (Speed == 0.0f) // stop
                 Code=AVC1394_VCR_OPERAND_WIND_STOP;
             else if (Speed > 0.0f) // fast-forward
