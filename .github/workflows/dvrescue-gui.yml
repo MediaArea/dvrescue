@@ -19,7 +19,7 @@ jobs:
     env: ${{ matrix.env }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
@@ -84,7 +84,7 @@ jobs:
     env: ${{ matrix.env }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
@@ -103,7 +103,7 @@ jobs:
         brew install ${{ matrix.packages }} ffmpeg@6
 
     - name: Install Qt6
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.qt_version }}
         modules: ${{ matrix.qt_modules }}
@@ -150,7 +150,7 @@ jobs:
     env: ${{ matrix.env }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
@@ -230,7 +230,7 @@ jobs:
     env: ${{ matrix.env }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
@@ -249,7 +249,7 @@ jobs:
         brew install ${{ matrix.packages }} nasm
 
     - name: Install Qt6
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.qt_version }}
         modules: ${{ matrix.qt_modules }}
@@ -316,7 +316,7 @@ jobs:
     env: ${{ matrix.env }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
     - name: Checkout submodules
@@ -330,7 +330,7 @@ jobs:
             submodule update --init --force --recursive --depth=1
 
     - name: Install Python 3.10 version
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v7
       with:
         python-version: '3.10'
         architecture: 'x64'
@@ -351,7 +351,7 @@ jobs:
                                 libiec61883-dev
 
     - name: Install Qt 5.15
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.qt_version }}
 
@@ -400,7 +400,7 @@ jobs:
     env: ${{ matrix.env }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
     - name: Checkout submodules
@@ -414,7 +414,7 @@ jobs:
             submodule update --init --force --recursive --depth=1
 
     - name: Install Python 3.10 version
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v7
       with:
         python-version: '3.10'
         architecture: 'x64'
@@ -434,7 +434,7 @@ jobs:
                                 libxv-dev
 
     - name: Install Qt 6
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.qt_version }}
         modules: ${{ matrix.qt_modules }}
@@ -475,7 +475,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
@@ -504,7 +504,7 @@ jobs:
         make install
 
     - name: Install Qt 5.15
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         arch: win64_mingw81
         version: ${{ matrix.qt_version }}
@@ -572,7 +572,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
@@ -601,7 +601,7 @@ jobs:
         make install
 
     - name: Install Qt 6
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         arch: win64_mingw
         version: ${{ matrix.qt_version }}
@@ -666,7 +666,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
@@ -700,7 +700,7 @@ jobs:
         nmake install
 
     - name: Install Qt 5.15
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.qt_version }}
 
@@ -758,7 +758,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
@@ -792,7 +792,7 @@ jobs:
         nmake install
 
     - name: Install Qt 6
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         arch: win64_msvc2019_64
         version: ${{ matrix.qt_version }}
