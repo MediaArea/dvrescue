@@ -26,11 +26,8 @@ jobs:
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Install dependencies
@@ -91,11 +88,8 @@ jobs:
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Install dependencies
@@ -157,11 +151,8 @@ jobs:
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Install dependencies
@@ -237,11 +228,8 @@ jobs:
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Install dependencies
@@ -322,11 +310,8 @@ jobs:
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Install Python 3.10 version
@@ -406,11 +391,8 @@ jobs:
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Install Python 3.10 version
@@ -482,11 +464,8 @@ jobs:
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Build and install zlib
@@ -579,11 +558,8 @@ jobs:
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Build and install zlib
@@ -673,11 +649,8 @@ jobs:
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Init vs environment
@@ -765,11 +738,8 @@ jobs:
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Init vs environment
