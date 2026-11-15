@@ -39,6 +39,7 @@ jobs:
         brew tap-new --no-git local/qwt
         curl -fL https://raw.githubusercontent.com/Homebrew/homebrew-core/56cd02e96876d1fb5b9ae951d605585fe8d614de/Formula/qwt.rb -o "$(brew --repository local/qwt)/Formula/qwt.rb"
         sed -i '' '/^  bottle do/,/^  end/d' "$(brew --repository local/qwt)/Formula/qwt.rb"
+        sed -i '' '/spec << "-arm64"/d' "$(brew --repository local/qwt)/Formula/qwt.rb" # macx-clang-arm64 spec no longer exists
         HOMEBREW_NO_AUTO_UPDATE=1 brew install local/qwt/qwt
 
     - name: Set Qt5 environment path
@@ -582,7 +583,7 @@ jobs:
         arch: win64_mingw
         version: ${{ matrix.qt_version }}
         modules: ${{ matrix.qt_modules }}
-        tools: 'tools_mingw1120,qt.tools.win64_mingw1120'
+        tools: 'tools_mingw90,qt.tools.win64_mingw900'
         add-tools-to-path: true
 
     - name: Install FFmpeg
