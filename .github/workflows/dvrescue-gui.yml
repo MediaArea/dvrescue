@@ -14,23 +14,20 @@ jobs:
             packages: llvm@15
             env: { 'CC': 'clang', 'CXX': 'clang++' }
 
-    runs-on: macos-latest
+    runs-on: macos-15
 
     env: ${{ matrix.env }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Install dependencies
@@ -39,10 +36,11 @@ jobs:
 
     - name: Install qwt-qt5
       run: |
-        curl -L https://raw.githubusercontent.com/Homebrew/homebrew-core/56cd02e96876d1fb5b9ae951d605585fe8d614de/Formula/qwt.rb -o /opt/homebrew/Library/Taps/homebrew/homebrew-core/Formula/q/qwt.rb
-        git -C /opt/homebrew/Library/Taps/homebrew/homebrew-core add Formula/q/qwt.rb
-        git -C /opt/homebrew/Library/Taps/homebrew/homebrew-core commit -m "Formula/q/qwt.rb 6.2.0 for Qt5"
-        HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_FROM_API=1 brew install qwt
+        brew tap-new --no-git local/qwt
+        curl -fL https://raw.githubusercontent.com/Homebrew/homebrew-core/56cd02e96876d1fb5b9ae951d605585fe8d614de/Formula/qwt.rb -o "$(brew --repository local/qwt)/Formula/qwt.rb"
+        sed -i '' '/^  bottle do/,/^  end/d' "$(brew --repository local/qwt)/Formula/qwt.rb"
+        sed -i '' '/spec << "-arm64"/d' "$(brew --repository local/qwt)/Formula/qwt.rb" # macx-clang-arm64 spec no longer exists
+        HOMEBREW_NO_AUTO_UPDATE=1 brew install local/qwt/qwt
 
     - name: Set Qt5 environment path
       run: |
@@ -79,23 +77,20 @@ jobs:
           - qt_version: "6.5.*"
             qt_modules: "qtmultimedia"
 
-    runs-on: macos-latest
+    runs-on: macos-15
 
     env: ${{ matrix.env }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Install dependencies
@@ -103,7 +98,7 @@ jobs:
         brew install ${{ matrix.packages }} ffmpeg@6
 
     - name: Install Qt6
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.qt_version }}
         modules: ${{ matrix.qt_modules }}
@@ -150,18 +145,15 @@ jobs:
     env: ${{ matrix.env }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Install dependencies
@@ -225,23 +217,20 @@ jobs:
           - qt_version: "6.5.*"
             qt_modules: "qtmultimedia"
 
-    runs-on: macos-latest
+    runs-on: macos-15
 
     env: ${{ matrix.env }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Install dependencies
@@ -249,7 +238,7 @@ jobs:
         brew install ${{ matrix.packages }} nasm
 
     - name: Install Qt6
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.qt_version }}
         modules: ${{ matrix.qt_modules }}
@@ -303,11 +292,11 @@ jobs:
 
     strategy:
       matrix:
-        compiler: ['gcc-9']
+        compiler: ['gcc']
         include:
-          - compiler: gcc-9
-            packages: gcc-9 g++-9
-            env: { 'CC': 'gcc-9', 'CXX': 'g++-9' }
+          - compiler: gcc
+            packages: gcc g++
+            env: { 'CC': 'gcc', 'CXX': 'g++' }
           - qt_version: "5.15.*"
             qt_packages: "libxkbcommon-dev libgstreamer-plugins-base1.0-0 libgstreamer-gl1.0-0"
 
@@ -316,21 +305,18 @@ jobs:
     env: ${{ matrix.env }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Install Python 3.10 version
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v7
       with:
         python-version: '3.10'
         architecture: 'x64'
@@ -351,7 +337,7 @@ jobs:
                                 libiec61883-dev
 
     - name: Install Qt 5.15
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.qt_version }}
 
@@ -386,11 +372,11 @@ jobs:
 
     strategy:
       matrix:
-        compiler: ['gcc-9']
+        compiler: ['gcc']
         include:
-          - compiler: gcc-9
-            packages: gcc-9 g++-9
-            env: { 'CC': 'gcc-9', 'CXX': 'g++-9' }
+          - compiler: gcc
+            packages: gcc g++
+            env: { 'CC': 'gcc', 'CXX': 'g++' }
           - qt_version: "6.5.*"
             qt_modules: "qtmultimedia qt5compat qtshadertools"
             qt_packages: "libxkbcommon-dev libgstreamer-plugins-base1.0-0 libgstreamer-gl1.0-0"
@@ -400,21 +386,18 @@ jobs:
     env: ${{ matrix.env }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Install Python 3.10 version
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v7
       with:
         python-version: '3.10'
         architecture: 'x64'
@@ -434,7 +417,7 @@ jobs:
                                 libxv-dev
 
     - name: Install Qt 6
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.qt_version }}
         modules: ${{ matrix.qt_modules }}
@@ -475,18 +458,15 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Build and install zlib
@@ -504,7 +484,7 @@ jobs:
         make install
 
     - name: Install Qt 5.15
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         arch: win64_mingw81
         version: ${{ matrix.qt_version }}
@@ -515,9 +495,8 @@ jobs:
       shell: pwsh
       run: |
         Set-Location ..
-        $json = $(curl -L -H "Accept: application/vnd.github+json" https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/243719342)
-        $ffmpeg_name = $($json | jq -r '.assets[] | select(.name | endswith("-win64-gpl-shared-6.1.zip")).name | sub("\\.zip$";"")')
-        $ffmpeg_url = $($json | jq -r '.assets[] | select(.name | endswith("-win64-gpl-shared-6.1.zip")).browser_download_url')
+        $ffmpeg_name = "ffmpeg-n6.1.3-win64-gpl-shared-6.1"
+        $ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2025-08-31-13-00/$ffmpeg_name.zip"
         Invoke-WebRequest -Uri "$ffmpeg_url" -OutFile "$ffmpeg_name.zip"
         Expand-Archive -Path "$ffmpeg_name.zip" -DestinationPath .
         Rename-Item -Path "$ffmpeg_name" -NewName "ffmpeg"
@@ -572,18 +551,15 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Build and install zlib
@@ -601,21 +577,20 @@ jobs:
         make install
 
     - name: Install Qt 6
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         arch: win64_mingw
         version: ${{ matrix.qt_version }}
         modules: ${{ matrix.qt_modules }}
-        tools: 'tools_mingw81,qt.tools.win64_mingw810'
+        tools: 'tools_mingw90,qt.tools.win64_mingw900'
         add-tools-to-path: true
 
     - name: Install FFmpeg
       shell: pwsh
       run: |
         Set-Location ..
-        $json = $(curl -L -H "Accept: application/vnd.github+json" https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest)
-        $ffmpeg_name = $($json | jq -r '.assets[] | select(.name | endswith("-win64-gpl-shared-7.1.zip")).name | sub("\\.zip$";"")')
-        $ffmpeg_url = $($json | jq -r '.assets[] | select(.name | endswith("-win64-gpl-shared-7.1.zip")).browser_download_url')
+        $ffmpeg_name = "ffmpeg-n7.1.1-57-g1b48158a23-win64-gpl-shared-7.1"
+        $ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2025-08-31-13-00/$ffmpeg_name.zip"
         Invoke-WebRequest -Uri "$ffmpeg_url" -OutFile "$ffmpeg_name.zip"
         Expand-Archive -Path "$ffmpeg_name.zip" -DestinationPath .
         Rename-Item -Path "$ffmpeg_name" -NewName "ffmpeg"
@@ -666,18 +641,15 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Init vs environment
@@ -700,17 +672,26 @@ jobs:
         nmake install
 
     - name: Install Qt 5.15
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.qt_version }}
+
+    - name: Apply Qt fix for MSVC 17.8+
+      shell: pwsh
+      run: |
+        # Backport of qtbase 52b6258ec8 (QTBUG-118993): stdext was removed from the MSVC STL
+        $file = "$env:QT_ROOT_DIR\include\QtCore\qcompilerdetection.h"
+        (Get-Content -Raw $file) `
+          -replace 'stdext::make_checked_array_iterator\(x, size_t\(N\)\)', '(x)' `
+          -replace 'stdext::make_unchecked_array_iterator\(x\)', '(x)' |
+          Set-Content -NoNewline $file
 
     - name: Install FFmpeg
       shell: pwsh
       run: |
         Set-Location ..
-        $json = $(curl -L -H "Accept: application/vnd.github+json" https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest)
-        $ffmpeg_name = $($json | jq -r '.assets[] | select(.name | endswith("-win64-gpl-shared-7.1.zip")).name | sub("\\.zip$";"")')
-        $ffmpeg_url = $($json | jq -r '.assets[] | select(.name | endswith("-win64-gpl-shared-7.1.zip")).browser_download_url')
+        $ffmpeg_name = "ffmpeg-n7.1.1-57-g1b48158a23-win64-gpl-shared-7.1"
+        $ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2025-08-31-13-00/$ffmpeg_name.zip"
         Invoke-WebRequest -Uri "$ffmpeg_url" -OutFile "$ffmpeg_name.zip"
         Expand-Archive -Path "$ffmpeg_name.zip" -DestinationPath .
         Rename-Item -Path "$ffmpeg_name" -NewName "ffmpeg"
@@ -758,18 +739,15 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
       with:
         fetch: 1
 
     - name: Checkout submodules
       shell: bash
       run: |
-        GIT_PATH=https://github.com/.extraheader
-        AUTH_HEADER="$(git config --local --get http.$GIT_PATH)"
         git submodule sync --recursive
-        git -c "http.extraheader=$AUTH_HEADER" \
-            -c protocol.version=2 \
+        git -c protocol.version=2 \
             submodule update --init --force --recursive --depth=1
 
     - name: Init vs environment
@@ -792,19 +770,28 @@ jobs:
         nmake install
 
     - name: Install Qt 6
-      uses: jurplel/install-qt-action@v3
+      uses: jurplel/install-qt-action@v4
       with:
         arch: win64_msvc2019_64
         version: ${{ matrix.qt_version }}
         modules: ${{ matrix.qt_modules }}
 
+    - name: Apply Qt fix for MSVC 17.8+
+      shell: pwsh
+      run: |
+        # Backport of qtbase 52b6258ec8 (QTBUG-118993): stdext was removed from the MSVC STL
+        $file = "$env:QT_ROOT_DIR\include\QtCore\qcompilerdetection.h"
+        (Get-Content -Raw $file) `
+          -replace 'stdext::make_checked_array_iterator\(x, size_t\(N\)\)', '(x)' `
+          -replace 'stdext::make_unchecked_array_iterator\(x\)', '(x)' |
+          Set-Content -NoNewline $file
+
     - name: Install FFmpeg
       shell: pwsh
       run: |
         Set-Location ..
-        $json = $(curl -L -H "Accept: application/vnd.github+json" https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest)
-        $ffmpeg_name = $($json | jq -r '.assets[] | select(.name | endswith("-win64-gpl-shared-7.1.zip")).name | sub("\\.zip$";"")')
-        $ffmpeg_url = $($json | jq -r '.assets[] | select(.name | endswith("-win64-gpl-shared-7.1.zip")).browser_download_url')
+        $ffmpeg_name = "ffmpeg-n7.1.1-57-g1b48158a23-win64-gpl-shared-7.1"
+        $ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2025-08-31-13-00/$ffmpeg_name.zip"
         Invoke-WebRequest -Uri "$ffmpeg_url" -OutFile "$ffmpeg_name.zip"
         Expand-Archive -Path "$ffmpeg_name.zip" -DestinationPath .
         Rename-Item -Path "$ffmpeg_name" -NewName "ffmpeg"

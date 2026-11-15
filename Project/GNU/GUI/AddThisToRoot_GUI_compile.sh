@@ -379,7 +379,6 @@ if [ "$OS" = "mac" ]; then
  avfilterver=$(basename $(ls "${PWD}"/ffmpeg/lib/libavfilter.*.dylib) | cut -d. -f2)
  avformatver=$(basename $(ls "${PWD}"/ffmpeg/lib/libavformat.*.dylib) | cut -d. -f2)
  avcodecver=$(basename $(ls "${PWD}"/ffmpeg/lib/libavcodec.*.dylib) | cut -d. -f2)
- postprocver=$(basename $(ls "${PWD}"/ffmpeg/lib/libpostproc.*.dylib) | cut -d. -f2)
  swresamplever=$(basename $(ls "${PWD}"/ffmpeg/lib/libswresample.*.dylib) | cut -d. -f2)
  swscalever=$(basename $(ls "${PWD}"/ffmpeg/lib/libswscale.*.dylib) | cut -d. -f2)
  avutilver=$(basename $(ls "${PWD}"/ffmpeg/lib/libavutil.*.dylib) | cut -d. -f2)
@@ -387,7 +386,10 @@ if [ "$OS" = "mac" ]; then
  install_name_tool -change "${PWD}"/ffmpeg/lib/libavfilter.${avfilterver}.dylib @executable_path/../Frameworks/libavfilter.${avfilterver}.dylib dvrescue/Source/GUI/dvrescue/build/dvrescue/dvrescue.app/Contents/Helpers/ffmpeg
  install_name_tool -change "${PWD}"/ffmpeg/lib/libavformat.${avformatver}.dylib @executable_path/../Frameworks/libavformat.${avformatver}.dylib dvrescue/Source/GUI/dvrescue/build/dvrescue/dvrescue.app/Contents/Helpers/ffmpeg
  install_name_tool -change "${PWD}"/ffmpeg/lib/libavcodec.${avcodecver}.dylib @executable_path/../Frameworks/libavcodec.${avcodecver}.dylib dvrescue/Source/GUI/dvrescue/build/dvrescue/dvrescue.app/Contents/Helpers/ffmpeg
- install_name_tool -change "${PWD}"/ffmpeg/lib/libpostproc.${postprocver}.dylib @executable_path/../Frameworks/libpostproc.${postprocver}.dylib dvrescue/Source/GUI/dvrescue/build/dvrescue/dvrescue.app/Contents/Helpers/ffmpeg
+ if ls "${PWD}"/ffmpeg/lib/libpostproc.*.dylib >/dev/null 2>&1; then # libpostproc was removed in FFmpeg 8
+  postprocver=$(basename $(ls "${PWD}"/ffmpeg/lib/libpostproc.*.dylib) | cut -d. -f2)
+  install_name_tool -change "${PWD}"/ffmpeg/lib/libpostproc.${postprocver}.dylib @executable_path/../Frameworks/libpostproc.${postprocver}.dylib dvrescue/Source/GUI/dvrescue/build/dvrescue/dvrescue.app/Contents/Helpers/ffmpeg
+ fi
  install_name_tool -change "${PWD}"/ffmpeg/lib/libswresample.${swresamplever}.dylib @executable_path/../Frameworks/libswresample.${swresamplever}.dylib dvrescue/Source/GUI/dvrescue/build/dvrescue/dvrescue.app/Contents/Helpers/ffmpeg
  install_name_tool -change "${PWD}"/ffmpeg/lib/libswscale.${swscalever}.dylib @executable_path/../Frameworks/libswscale.${swscalever}.dylib dvrescue/Source/GUI/dvrescue/build/dvrescue/dvrescue.app/Contents/Helpers/ffmpeg
  install_name_tool -change "${PWD}"/ffmpeg/lib/libavutil.${avutilver}.dylib @executable_path/../Frameworks/libavutil.${avutilver}.dylib dvrescue/Source/GUI/dvrescue/build/dvrescue/dvrescue.app/Contents/Helpers/ffmpeg

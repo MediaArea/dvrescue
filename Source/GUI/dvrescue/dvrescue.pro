@@ -18,7 +18,7 @@ defineReplace(nativePath) {
 contains(DEFINES, USE_BREW) {
     message('using ffmpeg from brew via PKGCONFIG')
 
-    pkgConfig = "PKGCONFIG += libavdevice libavcodec libavfilter libavformat libpostproc libswresample libswscale libavcodec libavutil"
+    pkgConfig = "PKGCONFIG += libavdevice libavcodec libavfilter libavformat libswresample libswscale libavcodec libavutil"
     linkPkgConfig = "CONFIG += link_pkgconfig"
 
     message('pkgConfig: ' $$pkgConfig)
